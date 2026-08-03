@@ -1,5 +1,24 @@
-.Rproj.user/
+.Rproj.user
 .Rhistory
 .RData
 .Ruserdata
-*.Rproj
+
+# R package files
+*.Rcheck/
+*.tar.gz
+
+# Quarto-generated files
+/.quarto/
+/_site/
+/_freeze/
+
+# Rendered temporary files
+*.utf8.md
+*.knit.md
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# IDE and editor files
+.vscode/

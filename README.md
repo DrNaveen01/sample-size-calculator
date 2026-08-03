@@ -1,26 +1,67 @@
-# Sample Size Workflow
+# Sample Size Calculator
 
-An R Shiny project for transparent, reproducible, and university-ready sample size calculations.
+A reproducible sample-size calculator for health and medical research.
 
-Most online calculators return only a final sample size. This project will also show the conventional formula, the user's assumptions substituted into that formula, the arithmetic result, and a concise interpretation suitable for research documentation.
+The project aims to provide statistically transparent sample-size calculations with:
 
-## First milestone
+- the statistical formula;
+- substituted numerical values;
+- intermediate calculation results;
+- the final rounded sample size;
+- a plain-language interpretation; and
+- outputs suitable for research protocols and reports.
 
-The first stable module will calculate the sample size for estimating a single population proportion. It will provide:
+## Current development milestone
 
-- validated assumptions and a calculated sample size;
-- the conventional mathematical formula;
-- the user's numerical values substituted into the formula;
-- a clear written result statement;
-- export-ready HTML and Markdown output; and
-- a DOCX output suitable for submission or inclusion in a protocol.
+### v0.1.0 — Single-proportion sample-size calculator
 
-## Development principle
+The first prerelease will implement sample-size estimation for a single population proportion.
 
-The single-proportion workflow will be implemented, tested, and stabilized before additional sample size methods are added. The calculation and explanation will share one underlying result object so that the on-screen answer and every exported format remain consistent.
+The calculation will use:
 
-## Status
+\[
+n_0 = \frac{Z_{1-\alpha/2}^{2}p(1-p)}{d^2}
+\]
 
-Project initialization. Calculator implementation has not yet been added.
+where:
 
-See [docs/PROJECT_SCOPE.md](docs/PROJECT_SCOPE.md) for the initial product definition and acceptance criteria.
+- \(n_0\) is the initial required sample size;
+- \(p\) is the expected population proportion;
+- \(d\) is the required absolute precision;
+- \(\alpha\) is the significance level; and
+- \(Z_{1-\alpha/2}\) is the corresponding standard-normal critical value.
+
+When a non-response proportion \(r\) is specified:
+
+\[
+n_{\text{final}} =
+\left\lceil
+\frac{n_0}{1-r}
+\right\rceil
+\]
+
+## Planned v0.1.0 features
+
+- Single-population-proportion calculation
+- Confidence-level input
+- Expected-proportion input
+- Absolute-precision input
+- Optional non-response adjustment
+- Input validation
+- Formula display
+- Numerical substitution
+- Upward rounding of the final sample size
+- Plain-language interpretation
+- Markdown output
+- HTML output
+- Automated tests
+- Worked examples
+
+## Project structure
+
+```text
+R/                  R calculation and output functions
+tests/testthat/      Automated unit tests
+examples/            Reproducible worked examples
+docs/                Project and statistical documentation
+.github/workflows/   GitHub Actions workflows
