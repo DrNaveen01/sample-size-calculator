@@ -22,3 +22,11 @@ Thumbs.db
 
 # IDE and editor files
 .vscode/
+
+# Generated reports and deployment metadata
+/output/
+/rsconnect/
+*.log
+*.aux
+*.out
+*.tex

@@ -1,0 +1,9 @@
+.git
+.github
+tests
+output
+docs
+examples
+sample-size-calculator.Rproj
+PROJECT.md
+CHANGELOG.md

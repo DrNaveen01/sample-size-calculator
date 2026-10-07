@@ -1,67 +1,87 @@
 # Sample Size Calculator
 
-A reproducible sample-size calculator for health and medical research.
+A reproducible R and Shiny calculator for estimating a single population proportion.
 
-The project aims to provide statistically transparent sample-size calculations with:
+## Run the app
 
-- the statistical formula;
-- substituted numerical values;
-- intermediate calculation results;
-- the final rounded sample size;
-- a plain-language interpretation; and
-- outputs suitable for research protocols and reports.
+Open sample-size-calculator.Rproj in RStudio. From the project root:
 
-## Current development milestone
+```r
+source("scripts/setup.R")
+shiny::runApp(".")
+```
 
-### v0.1.0 — Single-proportion sample-size calculator
+RStudio supplies Pandoc. PDF export also needs TeX Live, MiKTeX, or TinyTeX with pdflatex on PATH. The setup script reuses an existing installation. To install TinyTeX when no LaTeX installation exists:
 
-The first prerelease will implement sample-size estimation for a single population proportion.
+```r
+Sys.setenv(INSTALL_TINYTEX = "true")
+source("scripts/setup.R")
+```
 
-The calculation will use:
+## Included
 
-\[
-n_0 = \frac{Z_{1-\alpha/2}^{2}p(1-p)}{d^2}
-\]
+- Absolute precision in percentage points or relative precision as a percentage of the expected proportion
+- Custom two-sided confidence level or directly supplied Z value
+- Optional non-response adjustment, complete-observation target, and final recruitment target
+- Live results, input validation, and input-specific checks
+- Generic formulas, legends, numerical substitution, intermediate results, final rounding, interpretation, assumptions, and references
+- Copy as Markdown and downloadable Markdown, PDF, and Word reports
+- Editable Word equations and local MathML in the browser preview
+- Shared calculation and report content across every output
+- Numerical, export, and Shiny server tests and GitHub Actions checks
 
-where:
+The scope now includes the requested Shiny interface and document exports. Two-proportion and 2 by 2 effect-measure calculators remain separate future work.
 
-- \(n_0\) is the initial required sample size;
-- \(p\) is the expected population proportion;
-- \(d\) is the required absolute precision;
-- \(\alpha\) is the significance level; and
-- \(Z_{1-\alpha/2}\) is the corresponding standard-normal critical value.
+## Reproduce a calculation
 
-When a non-response proportion \(r\) is specified:
+The calculation function accepts proportions rather than percentages.
 
-\[
-n_{\text{final}} =
-\left\lceil
-\frac{n_0}{1-r}
-\right\rceil
-\]
+```r
+source("R/single_proportion.R")
+source("R/report.R")
+source("R/exports.R")
 
-## Planned v0.1.0 features
+result <- single_proportion(
+  p = 0.50, precision = 0.05,
+  confidence = 0.95, nonresponse = 0.10
+)
+print(result)
+# Complete observations required: 385
+# Participants to approach: 427
 
-- Single-population-proportion calculation
-- Confidence-level input
-- Expected-proportion input
-- Absolute-precision input
-- Optional non-response adjustment
-- Input validation
-- Formula display
-- Numerical substitution
-- Upward rounding of the final sample size
-- Plain-language interpretation
-- Markdown output
-- HTML output
-- Automated tests
-- Worked examples
+single_proportion_export(result, "calculation.md", "markdown")
+single_proportion_export(result, "calculation.pdf", "pdf")
+single_proportion_export(result, "calculation.docx", "docx")
+
+# Generate all worked-example outputs and run checks:
+source("examples/worked_example.R")
+source("scripts/run_tests.R")
+```
+
+Calculations use the normal approximation for a large population with independent observations. The engine keeps full precision and applies non-response inflation to the unrounded base value. It rounds the final recruitment target upward once. This method plans estimation precision rather than hypothesis-test power.
 
 ## Project structure
 
-```text
-R/                  R calculation and output functions
-tests/testthat/      Automated unit tests
-examples/            Reproducible worked examples
-docs/                Project and statistical documentation
-.github/workflows/   GitHub Actions workflows
+| Path | Purpose |
+|:---|:---|
+| app.R | Shiny entry point |
+| R/single_proportion.R | Calculation and validation |
+| R/report.R | Shared report content |
+| R/exports.R | HTML, Markdown, PDF, and DOCX conversion |
+| R/app_ui.R and R/app_server.R | Interface and reactive behavior |
+| www/ | Responsive styles and clipboard behavior |
+| templates/ | Word reference and title styles |
+| scripts/ and examples/ | Setup, checks, and reproducible example |
+| tests/testthat/ | Calculation, report, export, and server checks |
+| docs/ | Method and deployment instructions |
+
+See [methods](docs/methods.md) for formulas and assumptions and [deployment](docs/deployment.md) for hosting requirements. An R-capable Shiny host is required; GitHub Pages cannot execute this app.
+
+## References
+
+1. Lwanga SK, Lemeshow S. *Sample size determination in health studies a practical manual*. WHO; 1991. https://iris.who.int/handle/10665/40062
+2. Penn State Department of Statistics. *STAT 500 Confidence intervals*. https://online.stat.psu.edu/stat500/Lesson05
+3. Posit. *Shiny file downloads*. https://shiny.posit.co/r/reference/shiny/latest/downloadhandler.html
+4. Posit. *Convert a document with Pandoc*. https://rmarkdown.rstudio.com/docs/reference/pandoc_convert.html
+
+MIT licence. Copyright 2026 Dr Naveen Suthar.
