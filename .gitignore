@@ -30,3 +30,4 @@ Thumbs.db
 *.aux
 *.out
 *.tex
+!templates/pdf_header.tex

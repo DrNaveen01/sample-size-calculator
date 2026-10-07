@@ -1,31 +1,29 @@
-# Workflow derived from https://github.com/r-lib/actions/tree/v2/examples
-# Need help debugging build failures? Start at https://github.com/r-lib/actions#where-to-find-help
+# This repository is a Shiny application, so verify the app rather than R CMD check.
+name: Calculator checks
 on:
   push:
     branches: [main, master]
   pull_request:
-
-name: R-CMD-check.yaml
-
-permissions: read-all
-
+permissions:
+  contents: read
 jobs:
-  R-CMD-check:
+  calculator-checks:
     runs-on: ubuntu-latest
-    env:
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      R_KEEP_PKG_SOURCE: yes
     steps:
       - uses: actions/checkout@v6
-
       - uses: r-lib/actions/setup-r@v2
-
-      - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::rcmdcheck
-          needs: check
-
-      - uses: r-lib/actions/check-r-package@v2
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-pandoc@v2
+      - name: Install R dependencies
+        run: Rscript -e 'install.packages(c("shiny", "rmarkdown", "testthat"))'
+      - name: Install PDF dependencies
+        run: sudo apt-get update && sudo apt-get install -y texlive-latex-base texlive-latex-recommended texlive-fonts-recommended
+      - name: Run engine, report, export and Shiny server checks
+        run: Rscript scripts/run_tests.R
+      - name: Generate worked reports for all calculators
+        run: Rscript examples/all_calculators.R
+      - uses: actions/upload-artifact@v4
         with:
-          upload-snapshots: true
-          build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
+          name: worked-example-reports
+          path: output/

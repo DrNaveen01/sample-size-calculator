@@ -28,7 +28,7 @@ For shinyapps.io, configure your account using the official instructions, then d
 
 ```r
 install.packages("rsconnect")
-rsconnect::deployApp(appDir = ".", appName = "single-proportion-sample-size")
+rsconnect::deployApp(appDir = ".", appName = "sample-size-calculator")
 ```
 
 Keep account credentials outside the repository. The included `.rscignore` excludes tests, local outputs, and development files from deployment. Check the hosting environment's PDF dependencies before relying on PDF downloads.
@@ -36,7 +36,7 @@ Keep account credentials outside the repository. The included `.rscignore` exclu
 ## Reproduce reports without opening the app
 
 ```r
-source("examples/worked_example.R")
+source("examples/all_calculators.R")
 ```
 
 This generates Markdown, HTML, PDF, and Word reports in `output/`. Each export is generated from the same calculation result and Markdown report. Word equations are native OMML; HTML equations are native MathML. The preview does not fetch equation scripts from an external service.

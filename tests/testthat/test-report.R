@@ -40,3 +40,17 @@ testthat::test_that("PDF and Word exports create valid files from the shared rep
     testthat::expect_identical(readChar(pdf, 4L, useBytes = TRUE), "%PDF")
   }
 })
+
+testthat::test_that("the original source-loading sequence still exports single proportions", {
+  original <- new.env(parent = globalenv())
+  for (file in c("single_proportion.R", "report.R", "exports.R")) {
+    sys.source(file.path("..", "..", "R", file), envir = original)
+  }
+  # Hide new dispatch helpers so this cannot pass by using globally sourced code.
+  original$calculation_key <- function(...) stop("New dispatch should not be needed")
+  original$calculation_markdown <- function(...) stop("New dispatch should not be needed")
+  x <- original$single_proportion(.5, .05, nonresponse = .1)
+  file <- tempfile(fileext = ".md")
+  original$single_proportion_export(x, file, "markdown")
+  testthat::expect_identical(readChar(file, file.info(file)$size, useBytes = TRUE), original$single_proportion_markdown(x))
+})

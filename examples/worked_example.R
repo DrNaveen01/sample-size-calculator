@@ -1,5 +1,5 @@
 # Run from the project root.
-for (path in c("single_proportion.R", "report.R", "exports.R")) source(file.path("R", path))
+for (path in c("single_proportion.R", "planning.R", "report.R", "reports_extended.R", "reports_objectives.R", "exports.R")) source(file.path("R", path))
 dir.create("output", showWarnings = FALSE)
 result <- single_proportion(p = 0.50, precision = 0.05, confidence = 0.95, nonresponse = 0.10)
 print(result)

@@ -10,6 +10,14 @@ display_count <- function(x) {
 
 display_percent <- function(x) paste0(display_number(100 * x, 6L), "%")
 
+display_decimal <- function(x, places = 2L) {
+  value <- formatC(x, format = "f", digits = places)
+  if (places > 0) value <- sub("\\.?0+$", "", value)
+  value
+}
+
+display_power <- function(x) paste0(display_decimal(100 * x), "%")
+
 report_interpretation <- function(x) {
   precision_text <- if (x$precision_type == "relative") {
     paste0(display_percent(x$precision), " relative precision, equivalent to an absolute margin of ",
@@ -94,8 +102,8 @@ single_proportion_markdown <- function(x) {
     "It uses the normal approximation with independent observations and optional non-response adjustment.", "",
     "## Generic formulas", "",
     formula("n_0 = \\frac{Z_{1-\\alpha/2}^{2}\\,p(1-p)}{d^{2}}"),
-    formula("n_{\\mathrm{adj}} = \\frac{n_0}{1-r}, \\qquad n_{\\mathrm{final}} = \\operatorname{ceil}(n_{\\mathrm{adj}})"),
-    "The ceiling operator $\\operatorname{ceil}(x)$ rounds upward to the next whole participant.", "",
+    formula("n_{\\mathrm{adj}} = \\frac{n_0}{1-r}"),
+    "The complete sample $n_{\\mathrm{complete}}$ and final recruitment target $n_{\\mathrm{final}}$ are the respective unrounded values rounded upward to whole participants.", "",
     "## Legends and input values", "", legends, "",
     "## Numerical substitution", "",
     "### Confidence level and critical value", "", z_step, "",
@@ -104,12 +112,12 @@ single_proportion_markdown <- function(x) {
     formula(paste0("n_0\\approx\\frac{(", v$z, ")^{2}\\times", v$p,
                    "\\times(1-", v$p, ")}{(", v$d, ")^{2}}")),
     formula(paste0("n_0\\approx ", v$n0)),
-    formula(paste0("n_{\\mathrm{complete}}=\\operatorname{ceil}(n_0)=", display_number(x$n_complete))),
+    formula(paste0("n_{\\mathrm{complete}}=", display_number(x$n_complete))),
     "Here $n_{\\mathrm{complete}}$ is the whole-number target for complete observations before non-response adjustment.", "",
     "### Non-response adjustment and final rounding", "",
     formula(paste0("n_{\\mathrm{adj}}\\approx\\frac{", v$n0, "}{1-", v$nonresponse,
                    "}\\approx", v$n_adjusted)),
-    formula(paste0("n_{\\mathrm{final}}=\\operatorname{ceil}(n_{\\mathrm{adj}})=", display_number(x$n_final))),
+    formula(paste0("n_{\\mathrm{final}}=", display_number(x$n_final))),
     "Displayed decimals are shortened for readability. Calculations use full machine precision; displayed approximations are not fed back into the calculation.", "",
     "## Interpretation", "", report_interpretation(x), "",
     "## Assumptions and limitations", "",

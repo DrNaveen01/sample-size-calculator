@@ -1,25 +1,66 @@
 calculator_server <- function(input, output, session) {
   result_state <- shiny::reactive({
     tryCatch({
-      # Validate UI units before converting percentages to proportions.
-      check_number(input$p_pct, "Expected proportion (%)", 0, 100, TRUE, TRUE)
-      check_number(input$nonresponse_pct, "Expected non-response (%)", 0, 100, FALSE, TRUE)
-      if (input$precision_type == "relative") {
-        check_number(input$relative_pct, "Relative margin of error (%)", 0, 100, TRUE)
-      } else {
-        check_number(input$absolute_pct, "Margin of error (percentage points)", 0, 100, TRUE)
+      type <- if (is.null(input$calculator)) "single_proportion" else input$calculator
+      comparison <- type %in% c("two_proportions", "two_means")
+      sizing <- !comparison || is.null(input$comparison_mode) || input$comparison_mode == "sample_size"
+      if (sizing) check_number(input$nonresponse_pct, "Expected non-response (%)", 0, 100, FALSE, TRUE)
+      nonresponse <- if (sizing) input$nonresponse_pct / 100 else 0
+      if (type %in% c("single_proportion", "single_mean")) {
+        if (input$confidence_mode == "confidence") {
+          check_number(input$confidence_pct, "Confidence level (%)", 0, 100, TRUE, TRUE)
+        }
+        confidence <- input$confidence_pct / 100
+        z <- if (input$confidence_mode == "z") input$z else NULL
+      } else if (comparison) {
+        check_number(input$alpha_pct, "Significance level (%)", 0, 100, TRUE, TRUE)
+        if (sizing) check_number(input$power_pct, "Target power (%)", 50, 100, TRUE, TRUE)
+        objective <- if (is.null(input$objective)) "equality" else input$objective
+        proportions <- type == "two_proportions"
+        margin <- if (objective == "noninferiority") {
+          if (proportions) input$ni_pp / 100 else input$ni_mean
+        } else if (objective == "superiority") {
+          if (proportions) input$superiority_pp / 100 else input$superiority_mean
+        } else 0
+        comparison_args <- list(alpha = input$alpha_pct / 100, objective = objective,
+          direction = if (is.null(input$direction)) "higher" else input$direction, margin = margin,
+          lower = if (objective != "equivalence") NULL else if (proportions) input$lower_pp / 100 else input$lower_mean,
+          upper = if (objective != "equivalence") NULL else if (proportions) input$upper_pp / 100 else input$upper_mean,
+          group1 = if (is.null(input$group1_name)) "Group 1" else input$group1_name,
+          group2 = if (is.null(input$group2_name)) "Group 2" else input$group2_name,
+          power = if (sizing) input$power_pct / 100 else 0.8,
+          ratio = if (sizing) input$allocation_ratio else 1, nonresponse = nonresponse,
+          n1 = if (sizing) NULL else input$fixed_n1, n2 = if (sizing) NULL else input$fixed_n2)
       }
-      if (input$confidence_mode == "confidence") {
-        check_number(input$confidence_pct, "Confidence level (%)", 0, 100, TRUE, TRUE)
-      }
-      list(result = single_proportion(
-        p = input$p_pct / 100,
-        precision = if (input$precision_type == "relative") input$relative_pct / 100 else input$absolute_pct / 100,
-        precision_type = input$precision_type,
-        confidence = input$confidence_pct / 100,
-        nonresponse = input$nonresponse_pct / 100,
-        z = if (input$confidence_mode == "z") input$z else NULL
-      ), error = NULL)
+      x <- switch(type,
+        single_proportion = {
+          check_number(input$p_pct, "Expected proportion (%)", 0, 100, TRUE, TRUE)
+          relative <- input$precision_type == "relative"
+          check_number(if (relative) input$relative_pct else input$absolute_pct,
+            if (relative) "Relative margin of error (%)" else "Margin of error (percentage points)", 0, 100, TRUE)
+          single_proportion(input$p_pct / 100,
+            if (relative) input$relative_pct / 100 else input$absolute_pct / 100,
+            confidence, nonresponse, input$precision_type, z)
+        },
+        single_mean = single_mean(input$mean_sd, input$mean_precision, confidence, nonresponse, z),
+        yamane = {
+          check_number(input$yamane_precision_pct, "Precision (percentage points)", 0, 100, TRUE, TRUE)
+          yamane(input$population_size, input$yamane_precision_pct / 100, nonresponse)
+        },
+        two_proportions = {
+          check_number(input$p1_pct, "Group 1 proportion (%)", 0, 100, TRUE, TRUE)
+          if (input$effect_type == "proportions") check_number(input$p2_pct, "Group 2 proportion (%)", 0, 100, TRUE, TRUE)
+          do.call(two_proportions, c(list(p1 = input$p1_pct / 100,
+            p2 = if (input$effect_type == "proportions") input$p2_pct / 100 else NULL,
+            effect_type = input$effect_type,
+            effect = if (input$effect_type == "or") input$odds_ratio else if (input$effect_type == "rr") input$risk_ratio else NULL), comparison_args))
+        },
+        two_means = do.call(two_means, c(list(mean1 = input$mean1, mean2 = input$mean2,
+          sd1 = input$sd1, sd2 = input$sd2,
+          sd_method = if (is.null(input$sd_method)) "separate" else input$sd_method,
+          pooled_sd = input$pooled_sd, ref_n1 = input$ref_n1, ref_n2 = input$ref_n2), comparison_args)),
+        stop("Choose a supported calculator.", call. = FALSE))
+      list(result = x, error = NULL)
     }, error = function(e) list(result = NULL, error = conditionMessage(e)))
   })
   current_result <- shiny::reactive({
@@ -27,25 +68,69 @@ calculator_server <- function(input, output, session) {
     shiny::req(is.null(value$error))
     value$result
   })
-  markdown_report <- shiny::reactive(single_proportion_markdown(current_result()))
+  markdown_report <- shiny::reactive(calculation_markdown(current_result()))
+  report_filename <- function(extension) {
+    x <- current_result()
+    paste0(calculation_key(x), if (inherits(x, "two_group_result") && x$objective != "equality") paste0("_", x$objective) else "",
+      if (identical(x$mode, "power")) "_power" else "", "_", x$n_final, ".", extension)
+  }
+
+  output$comparison_help <- shiny::renderUI({
+    objective <- if (is.null(input$objective)) "equality" else input$objective
+    text <- switch(objective,
+      equality = "Alpha is two-sided. This tests for a difference; a non-significant result does not prove equality or equivalence.",
+      superiority = "Alpha is one-sided. Enter 2.5% for a one-sided alpha of 0.025. The selected direction determines improvement.",
+      noninferiority = "Alpha is one-sided. Enter 2.5% for a one-sided alpha of 0.025. The margin must be justified clinically.",
+      equivalence = "Alpha applies to each one-sided test. Both tests must reject. Alpha 5% per test corresponds to a 90% two-sided confidence interval.")
+    shiny::tags$p(class = "field-help", text)
+  })
+
+  # Display labels follow the editable names; mathematical indices remain 1 and 2.
+  shiny::observe({
+    first <- if (is.null(input$group1_name)) "Group 1" else input$group1_name
+    second <- if (is.null(input$group2_name)) "Group 2" else input$group2_name
+    labels <- list(p1_pct = paste(first, "expected proportion (%)"), p2_pct = paste(second, "expected proportion (%)"),
+      mean1 = paste(first, "expected mean"), mean2 = paste(second, "expected mean"),
+      sd1 = paste(first, "standard deviation"), sd2 = paste(second, "standard deviation"),
+      fixed_n1 = paste(first, "complete sample size"), fixed_n2 = paste(second, "complete sample size"),
+      ref_n1 = paste("Reference study", first, "sample size"), ref_n2 = paste("Reference study", second, "sample size"),
+      allocation_ratio = paste0("Group size ratio (", second, " / ", first, ")"),
+      odds_ratio = paste0("Odds ratio (", second, " / ", first, ")"), risk_ratio = paste0("Risk ratio (", second, " / ", first, ")"))
+    for (name in names(labels)) shiny::updateNumericInput(session, name, label = labels[[name]])
+    shiny::updateSelectInput(session, "direction", label = paste("Direction of benefit for", second))
+  })
 
   output$result_summary <- shiny::renderUI({
     value <- result_state()
-    if (!is.null(value$error)) {
-      return(shiny::tags$section(class = "error-panel", role = "alert",
-        shiny::tags$h2("Check the inputs"), shiny::tags$p(value$error)))
-    }
+    if (!is.null(value$error)) return(shiny::tags$section(class = "error-panel", role = "alert",
+      shiny::tags$h2("Check the inputs"), shiny::tags$p(value$error)))
     x <- value$result
+    comparison <- inherits(x, "two_group_result")
+    power_mode <- comparison && x$mode == "power"
+    detail <- function(label, value) shiny::tags$div(shiny::tags$span(label), shiny::tags$strong(value))
+    details <- if (comparison) {
+      shiny::tagList(detail(if (power_mode) "Complete observations" else "Complete total", display_count(x$n_complete)),
+        detail(if (power_mode) "Group size ratio" else "Target power", if (power_mode) display_number(x$ratio, 6L) else display_power(x$power)),
+        detail("Significance level", display_percent(x$alpha)))
+    } else shiny::tagList(detail("Complete observations", display_count(x$n_complete)),
+      detail(if (inherits(x, "yamane_result")) "Assumed confidence" else "Confidence level", display_percent(x$confidence)),
+      detail("Absolute margin", if (inherits(x, "single_proportion_result") || inherits(x, "yamane_result")) paste0(display_number(100 * x$d, 6L), " pp") else display_number(x$d, 6L)))
     shiny::tags$section(class = "result-hero",
-      shiny::tags$div(class = "hero-label", "FINAL RECRUITMENT TARGET"),
-      shiny::tags$div(class = "hero-number", display_count(x$n_final), shiny::tags$span("participants")),
-      shiny::tags$div(class = "result-details",
-        shiny::tags$div(shiny::tags$span("Complete observations"), shiny::tags$strong(display_count(x$n_complete))),
-        shiny::tags$div(shiny::tags$span("Confidence level"), shiny::tags$strong(display_percent(x$confidence))),
-        shiny::tags$div(shiny::tags$span("Absolute margin"), shiny::tags$strong(paste0(display_number(100 * x$d, 6L), " pp")))
-      ),
-      if (length(x$warnings)) shiny::tags$div(class = "calculation-warning", role = "status", paste(x$warnings, collapse = " "))
-    )
+      shiny::tags$div(class = "hero-label", if (power_mode) "APPROXIMATE POWER" else "FINAL RECRUITMENT TARGET"),
+      if (comparison) shiny::tags$p(class = "objective-label", objective_name(x$objective)),
+      shiny::tags$div(class = "hero-number", if (power_mode) display_power(x$achieved_power) else display_count(x$n_final),
+        if (!power_mode) shiny::tags$span("participants")),
+      if (comparison) shiny::tags$div(class = "group-targets",
+        shiny::tags$div(shiny::tags$span(x$group1), shiny::tags$strong(display_count(if (power_mode) x$n1 else x$final1)),
+          shiny::tags$small(if (power_mode) "complete observations" else paste0("Complete target: ", display_count(x$n1)))),
+        shiny::tags$div(shiny::tags$span(x$group2), shiny::tags$strong(display_count(if (power_mode) x$n2 else x$final2)),
+          shiny::tags$small(if (power_mode) "complete observations" else paste0("Complete target: ", display_count(x$n2))))),
+      shiny::tags$div(class = "result-details", details),
+      if (comparison && !power_mode) shiny::tags$p(class = "power-check", paste0("Approximate power at rounded complete sizes: ", display_power(x$achieved_power),
+        " · Planned ", x$group2, " / ", x$group1, " ratio: ", display_number(x$ratio, 6L))),
+      if (inherits(x, "two_means_result") && x$sd_method != "separate") shiny::tags$p(class = "power-check",
+        paste0(if (x$sd_method == "reference") "Computed" else "Reported", " pooled SD: ", display_number(x$pooled_sd))),
+      if (length(x$warnings)) shiny::tags$div(class = "calculation-warning", role = "status", paste(x$warnings, collapse = " ")))
   })
 
   output$export_actions <- shiny::renderUI({
@@ -55,57 +140,53 @@ calculator_server <- function(input, output, session) {
         shiny::tags$button(type = "button", class = "copy-button", `data-copy-markdown` = "true", "Copy as Markdown"),
         if (export_available("pdf")) shiny::downloadButton("download_pdf", "Download PDF", class = "export-button"),
         if (export_available("docx")) shiny::downloadButton("download_docx", "Download Word", class = "export-button"),
-        shiny::downloadButton("download_markdown", "Save .md", class = "export-button secondary-button")
-      ),
-      if (!export_available("pdf")) shiny::tags$p(class = "export-help", "PDF export is unavailable until Pandoc and LaTeX are installed. See the setup instructions."),
-      if (!export_available("docx")) shiny::tags$p(class = "export-help", "Word export is unavailable until Pandoc is installed. See the setup instructions."),
-      shiny::tags$p(id = "export_copy_status", class = "copy-status", role = "status", `aria-live` = "polite")
-    )
+        shiny::downloadButton("download_markdown", "Save .md", class = "export-button secondary-button")),
+      if (!export_available("pdf")) shiny::tags$p(class = "export-help", "PDF export needs Pandoc and LaTeX. See the setup instructions."),
+      if (!export_available("docx")) shiny::tags$p(class = "export-help", "Word export needs Pandoc. See the setup instructions."),
+      shiny::tags$p(id = "export_copy_status", class = "copy-status", role = "status", `aria-live` = "polite"))
   })
-
   output$report_preview <- shiny::renderUI({
-    if (!is.null(result_state()$error)) {
-      return(shiny::tags$p(class = "empty-report", "Enter valid inputs to see the calculation report."))
-    }
+    if (!is.null(result_state()$error)) return(shiny::tags$p(class = "empty-report", "Enter valid inputs to see the calculation report."))
     shiny::tags$article(class = "calculation-report", shiny::HTML(report_html_fragment(current_result())))
   })
   output$markdown_source <- shiny::renderUI({
     value <- if (is.null(result_state()$error)) markdown_report() else ""
     shiny::tags$textarea(id = "markdown_text", class = "markdown-source", readonly = "readonly",
-                         spellcheck = "false", `aria-label` = "Markdown calculation report", value)
+      spellcheck = "false", `aria-label` = "Markdown calculation report", value)
   })
-  # The source is kept up to date even when the Markdown tab is hidden.
   shiny::outputOptions(output, "markdown_source", suspendWhenHidden = FALSE)
 
   output$download_markdown <- shiny::downloadHandler(
-    filename = function() paste0("single_proportion_", current_result()$n_final, ".md"),
-    contentType = "text/markdown; charset=utf-8",
-    content = function(file) single_proportion_export(current_result(), file, "markdown")
-  )
+    filename = function() report_filename("md"), contentType = "text/markdown; charset=utf-8",
+    content = function(file) calculation_export(current_result(), file, "markdown"))
   output$download_docx <- shiny::downloadHandler(
-    filename = function() paste0("single_proportion_", current_result()$n_final, ".docx"),
+    filename = function() report_filename("docx"),
     contentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    content = function(file) {
-      shiny::withProgress(message = "Preparing Word report", value = 0.5,
-        single_proportion_export(current_result(), file, "docx"))
-    }
-  )
+    content = function(file) shiny::withProgress(message = "Preparing Word report", value = 0.5,
+      calculation_export(current_result(), file, "docx")))
   output$download_pdf <- shiny::downloadHandler(
-    filename = function() paste0("single_proportion_", current_result()$n_final, ".pdf"),
-    contentType = "application/pdf",
-    content = function(file) {
-      shiny::withProgress(message = "Preparing PDF report", value = 0.5,
-        single_proportion_export(current_result(), file, "pdf"))
-    }
-  )
+    filename = function() report_filename("pdf"), contentType = "application/pdf",
+    content = function(file) shiny::withProgress(message = "Preparing PDF report", value = 0.5,
+      calculation_export(current_result(), file, "pdf")))
+
+  # Reset values for the selected calculator while keeping the selection.
   shiny::observeEvent(input$reset, {
-    shiny::updateNumericInput(session, "p_pct", value = 50)
+    defaults <- list(p_pct = 50, absolute_pct = 5, relative_pct = 10, confidence_pct = 95,
+      z = 1.96, nonresponse_pct = 10, mean_sd = 10, mean_precision = 2, p1_pct = 20, p2_pct = 30,
+      odds_ratio = 1.714285714285714, risk_ratio = 1.5, mean1 = 100, mean2 = 105,
+      sd1 = 15, sd2 = 15, alpha_pct = 5, power_pct = 80, allocation_ratio = 1,
+      fixed_n1 = 100, fixed_n2 = 100, ni_pp = 5, ni_mean = 5, superiority_pp = 0, superiority_mean = 0,
+      lower_pp = -5, upper_pp = 5, lower_mean = -5, upper_mean = 5, pooled_sd = 15,
+      ref_n1 = 50, ref_n2 = 100, population_size = 1000, yamane_precision_pct = 5)
+    for (name in names(defaults)) shiny::updateNumericInput(session, name, value = defaults[[name]])
     shiny::updateRadioButtons(session, "precision_type", selected = "absolute")
-    shiny::updateNumericInput(session, "absolute_pct", value = 5)
-    shiny::updateNumericInput(session, "relative_pct", value = 10)
     shiny::updateRadioButtons(session, "confidence_mode", selected = "confidence")
-    shiny::updateNumericInput(session, "confidence_pct", value = 95)
-    shiny::updateNumericInput(session, "z", value = 1.96)
-    shiny::updateNumericInput(session, "nonresponse_pct", value = 10)
+    shiny::updateRadioButtons(session, "comparison_mode", selected = "sample_size")
+    shiny::updateSelectInput(session, "effect_type", selected = "proportions")
+    shiny::updateSelectInput(session, "objective", selected = "equality")
+    shiny::updateSelectInput(session, "direction", selected = "higher")
+    shiny::updateSelectInput(session, "sd_method", selected = "separate")
+    shiny::updateTextInput(session, "group1_name", value = "Group 1")
+    shiny::updateTextInput(session, "group2_name", value = "Group 2")
   })
 }

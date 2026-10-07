@@ -1,13 +1,10 @@
 <!-- badges: start -->
-[![R-CMD-check](https://github.com/DrNaveen01/sample-size-calculator/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/DrNaveen01/sample-size-calculator/actions/workflows/R-CMD-check.yaml)
+[![Calculator checks](https://github.com/DrNaveen01/sample-size-calculator/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/DrNaveen01/sample-size-calculator/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
-
-
-
 
 # Sample Size Calculator
 
-A reproducible R and Shiny calculator for estimating a single population proportion.
+An R and Shiny app for sample-size planning and approximate power for independent observations. Every calculation can be copied as Markdown or downloaded as PDF or Word, with generic formulas, legends, numerical substitution, intermediate results, interpretation, and references.
 
 ## Run the app
 
@@ -18,77 +15,120 @@ source("scripts/setup.R")
 shiny::runApp(".")
 ```
 
-RStudio supplies Pandoc. PDF export also needs TeX Live, MiKTeX, or TinyTeX with pdflatex on PATH. The setup script reuses an existing installation. To install TinyTeX when no LaTeX installation exists:
+RStudio supplies Pandoc. PDF export also needs TeX Live, MiKTeX, or TinyTeX with pdflatex on PATH. The setup script reuses an existing installation. To install TinyTeX if no LaTeX installation exists:
 
 ```r
 Sys.setenv(INSTALL_TINYTEX = "true")
 source("scripts/setup.R")
 ```
 
-## Included
+## Calculators
 
-- Absolute precision in percentage points or relative precision as a percentage of the expected proportion
-- Custom two-sided confidence level or directly supplied Z value
-- Optional non-response adjustment, complete-observation target, and final recruitment target
-- Live results, input validation, and input-specific checks
-- Generic formulas, legends, numerical substitution, intermediate results, final rounding, interpretation, assumptions, and references
-- Copy as Markdown and downloadable Markdown, PDF, and Word reports
-- Editable Word equations and local MathML in the browser preview
-- Shared calculation and report content across every output
-- Numerical, export, and Shiny server tests and GitHub Actions checks
+| Calculator | Planning inputs | Results |
+|:---|:---|:---|
+| Single proportion | Expected proportion, absolute or relative margin, confidence or custom Z | Complete observations and recruitment target |
+| Single mean | Standard deviation, absolute margin in the same units, confidence or custom Z | Complete observations and recruitment target |
+| Two proportions | Two expected proportions, or group 1 proportion plus OR or RR; significance level, target power, allocation ratio | Complete and recruitment sizes for each group and total |
+| Two means | Two expected means; separate SDs, reported pooled SD, or reference SDs and group sizes; significance, power, allocation | Complete and recruitment sizes for each group and total |
+| Taro Yamane | Finite population size and precision; optional non-response | Complete observations and recruitment target |
 
-The scope now includes the requested Shiny interface and document exports. Two-proportion and 2 by 2 effect-measure calculators remain separate future work.
+For comparisons, select **Sample size** to enter target power and the group size ratio, or **Power** to enter complete group sizes and calculate approximate power. The allocation ratio is **group 2 / group 1**: 1 gives equal groups; 2 plans twice as many complete observations in group 2. OR and RR also refer to group 2 relative to group 1. The same event must define both proportions. Different group standard deviations are allowed for two means.
 
-## Reproduce a calculation
+For both comparisons, choose **Equality**, **Superiority**, **Non-inferiority**, or **Equivalence**. Equality is a two-sided test of a zero difference. Superiority and non-inferiority use a declared direction of benefit and a one-sided alpha. Equivalence uses lower and upper margins for the signed second-group minus first-group difference, with alpha specified for each of the two one-sided tests. The help text identifies the alpha convention. Margins must be clinically justified; a non-significant equality test does not establish equivalence.
 
-The calculation function accepts proportions rather than percentages.
+Group names are editable and follow the inputs, results, formula legends, and reports. In two means, pooled-SD modes assume a common population variance. Reference group sizes weight the within-group pooled SD and remain separate from the planned allocation. The report shows the SD formula and numerical calculation.
+
+Target power for sample-size mode must be above 50% and below 100%. Power mode takes whole-number complete, analysable sizes of at least two per group; no non-response inflation is applied. Displayed power has at most two decimal places; computation retains full precision. On desktop, the input and output columns scroll independently. Mobile uses a stacked layout.
+
+The Yamane formula is a simplified survey-proportion method for a known finite population. It assumes simple random sampling, approximately 95% confidence, and a proportion of 0.5. Its confidence and assumed proportion are fixed, and it has no power input. See [methods and references](docs/methods.md).
+
+## Reports and rounding
+
+- Live calculation preview with locally generated MathML
+- Copy as Markdown, save .md, download PDF, and download Word with editable equations
+- Generic formulas, every symbol explained, input values, substituted equations, intermediate results, and final rounding
+- Per-group sizes, approximate power checks, assumptions, references, and input-specific warnings
+- A single report source for the interface, clipboard, and all downloaded formats
+
+The engine retains full precision. In sample-size mode, non-response inflation is applied to each unrounded base size; recruitment targets are then rounded upward separately. Rounded complete targets are shown separately. Rounding can slightly alter the requested allocation ratio. Non-response inflation compensates for expected loss of observations; it does not correct bias.
+
+These methods assume independent observations and a large population. The mean calculations treat anticipated standard deviations as known for planning; they are not exact t-test or Welch power calculations. For equality, two-proportion planning uses pooled null variance and unpooled alternative variance. The directional and equivalence objectives use an unpooled Wald approximation. No continuity correction is applied. Paired data, clusters, exact binomial methods, and exact t or Welch methods require other calculations. Yamane is the only finite-population method currently included.
+
+## Reproduce calculations
 
 ```r
-source("R/single_proportion.R")
-source("R/report.R")
-source("R/exports.R")
+for (file in c("single_proportion.R", "planning.R", "report.R",
+               "reports_extended.R", "reports_objectives.R", "exports.R")) {
+  source(file.path("R", file))
+}
 
-result <- single_proportion(
-  p = 0.50, precision = 0.05,
-  confidence = 0.95, nonresponse = 0.10
-)
+single_proportion(.50, .05, nonresponse = .10)
+single_mean(sd = 10, precision = 2, nonresponse = .10)
+
+# 80% target power, 5% two-sided significance, 2:1 allocation.
+result <- two_proportions(.20, .30, power = .80, alpha = .05,
+                          ratio = 2, nonresponse = .10)
 print(result)
-# Complete observations required: 385
-# Participants to approach: 427
+# Complete group sizes: 224 and 447
+# Recruitment group sizes: 249 and 497; total 746
+calculation_export(result, "calculation.md", "markdown")
+calculation_export(result, "calculation.pdf", "pdf")
+calculation_export(result, "calculation.docx", "docx")
 
-single_proportion_export(result, "calculation.md", "markdown")
-single_proportion_export(result, "calculation.pdf", "pdf")
-single_proportion_export(result, "calculation.docx", "docx")
+# Two independent means with different standard deviations.
+two_means(100, 105, sd1 = 15, sd2 = 20, power = .80, ratio = 2)
 
-# Generate all worked-example outputs and run checks:
-source("examples/worked_example.R")
+# Group 2 expected proportion derived from group 1 and RR or OR.
+two_proportions(.20, effect_type = "rr", effect = 1.5)
+two_proportions(.20, effect_type = "or", effect = 12/7)
+
+# Approximate power for fixed complete group sizes.
+two_proportions(.20, .30, n1 = 100, n2 = 200)
+two_means(100, 105, sd1 = 15, sd2 = 20, n1 = 100, n2 = 200)
+
+# Non-inferiority of two means, with pooled SD computed from a reference study.
+two_means(100, 100, 15, 20, objective = "noninferiority", margin = 5,
+          alpha = .025, sd_method = "reference", ref_n1 = 50, ref_n2 = 100,
+          group1 = "Standard care", group2 = "New treatment")
+
+# Enter a pooled SD directly.
+two_means(100, 105, sd_method = "pooled", pooled_sd = 15)
+
+# Joint equivalence power, asymmetric margins, unequal allocation.
+two_proportions(.20, .21, objective = "equivalence", lower = -.05,
+                upper = .04, alpha = .05, ratio = 2)
+
+# Directional superiority; use direction = "lower" when lower is better.
+two_means(100, 105, 15, objective = "superiority", alpha = .025)
+
+# Taro Yamane: population 1000, 5 percentage-point precision, 10% non-response.
+yamane(1000, precision = .05, nonresponse = .10)
+
 source("scripts/run_tests.R")
+source("examples/all_calculators.R")
 ```
 
-Calculations use the normal approximation for a large population with independent observations. The engine keeps full precision and applies non-response inflation to the unrounded base value. It rounds the final recruitment target upward once. This method plans estimation precision rather than hypothesis-test power.
+The downloadable bundle includes Markdown and HTML examples for every scenario, and seven PDF/Word example pairs covering the single calculators, pooled SD, non-inferiority, superiority, equivalence, and Yamane. The example script regenerates all formats for every scenario.
+
+The original `single_proportion()` and `single_proportion_export()` functions and their original source-loading sequence remain supported. New calculators and exports use the source-loading sequence above. R calculation APIs accept probabilities as fractions; the interface accepts percentages.
 
 ## Project structure
 
 | Path | Purpose |
 |:---|:---|
 | app.R | Shiny entry point |
-| R/single_proportion.R | Calculation and validation |
-| R/report.R | Shared report content |
-| R/exports.R | HTML, Markdown, PDF, and DOCX conversion |
+| R/single_proportion.R and R/planning.R | Calculation engines and validation |
+| R/report.R, R/reports_extended.R, and R/reports_objectives.R | Shared report content |
+| R/exports.R | Markdown, PDF, DOCX, and HTML conversion |
 | R/app_ui.R and R/app_server.R | Interface and reactive behavior |
 | www/ | Responsive styles and clipboard behavior |
-| templates/ | Word reference and title styles |
-| scripts/ and examples/ | Setup, checks, and reproducible example |
-| tests/testthat/ | Calculation, report, export, and server checks |
-| docs/ | Method and deployment instructions |
+| templates/ | Word reference, report styles, and PDF pagination |
+| scripts/ and examples/ | Setup, verification, reproducible examples |
+| tests/testthat/ and tests/fixtures/ | Engine, report, export, server, and independent reference checks |
+| docs/ | Methods, validation, and deployment instructions |
 
-See [methods](docs/methods.md) for formulas and assumptions and [deployment](docs/deployment.md) for hosting requirements. An R-capable Shiny host is required; GitHub Pages cannot execute this app.
+See [methods](docs/methods.md), [validation](docs/validation.md), and [deployment](docs/deployment.md). An R-capable Shiny host is required; GitHub Pages cannot execute this app.
 
-## References
-
-1. Lwanga SK, Lemeshow S. *Sample size determination in health studies a practical manual*. WHO; 1991. https://iris.who.int/handle/10665/40062
-2. Penn State Department of Statistics. *STAT 500 Confidence intervals*. https://online.stat.psu.edu/stat500/Lesson05
-3. Posit. *Shiny file downloads*. https://shiny.posit.co/r/reference/shiny/latest/downloadhandler.html
-4. Posit. *Convert a document with Pandoc*. https://rmarkdown.rstudio.com/docs/reference/pandoc_convert.html
+AUC estimation, sensitivity, specificity, and diagnostic-accuracy calculations are planned for a later update; see [development plan](PROJECT.md).
 
 MIT licence. Copyright 2026 Dr Naveen Suthar.

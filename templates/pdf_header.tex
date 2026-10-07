@@ -1,0 +1,8 @@
+% Reserve room for the legend heading, table header, and first rows.
+% This uses core LaTeX so the existing PDF dependencies remain sufficient.
+\newcommand{\ReserveLegendSpace}{%
+  \par
+  \ifdim\dimexpr\pagegoal-\pagetotal\relax<7\baselineskip
+    \newpage
+  \fi
+}
