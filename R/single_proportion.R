@@ -83,3 +83,4 @@ print.single_proportion_result <- function(x, ...) {
       "Participants to approach: ", x$n_final, "\n", sep = "")
   invisible(x)
 }
+

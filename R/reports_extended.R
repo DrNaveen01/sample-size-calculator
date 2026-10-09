@@ -2,6 +2,7 @@
 formula_lines <- function(text) c("", "$$", text, "$$", "")
 
 calculation_key <- function(x) {
+  if (inherits(x, "extended_result")) return(x$key)
   if (inherits(x, "single_proportion_result")) return("single_proportion")
   if (inherits(x, "single_mean_result")) return("single_mean")
   if (inherits(x, "two_proportions_result")) return("two_proportions")
@@ -11,9 +12,11 @@ calculation_key <- function(x) {
 }
 
 calculation_markdown <- function(x) {
-  switch(calculation_key(x), single_proportion = single_proportion_markdown(x),
+  text <- if (inherits(x, "extended_result")) extended_markdown(x) else switch(calculation_key(x), single_proportion = single_proportion_markdown(x),
     single_mean = single_mean_markdown(x), two_proportions = comparison_markdown(x),
     two_means = comparison_markdown(x), yamane = yamane_markdown(x))
+  if (exists("plot_appendix", mode = "function")) text <- paste(c(text, plot_appendix(x)), collapse = "\n")
+  text
 }
 
 legend_row <- function(symbol, meaning, value) {

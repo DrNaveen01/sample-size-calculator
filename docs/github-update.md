@@ -1,14 +1,7 @@
-# Updating the GitHub repository from this bundle
+# Repository update status
 
-The updated source includes all five calculators, the four two-group objectives, power modes, pooled SD options, custom group names, scrolling improvements, and shared exports. It incorporates the README badge and workflow added on main. The GitHub connection rejected branch creation with HTTP 403 ("Resource not accessible by integration"), so no remote branch or pull request was created for this extension.
+The base inspected was main commit 8c0dbe326d5c6ce97e831ea4a96790fc8c498270. This complete 0.7.0 review candidate extends that repository; it is not an installer patch.
 
-Copy the project files into your repository checkout, review the changes, and run:
+Creating the branch calculator-v0.7.0-review through the connected GitHub integration returned HTTP 403, Resource not accessible by integration. Therefore no branch, pull request, merge, issue closure or hosted deployment is claimed for this update. The supplied archive contains all changes and representative generated reports.
 
-```r
-source("scripts/run_tests.R")
-source("examples/all_calculators.R")
-```
-
-The workflow has been consolidated into `.github/workflows/R-CMD-check.yaml`, which now runs application checks and generates all worked reports. Remove the previous `.github/workflows/checks.yaml` from the checkout when applying this bundle. The source is a Shiny app; the workflow does not invoke R CMD check on a package.
-
-The `output` folder contains example reports and can be regenerated. It is excluded from git. Open sample-size-calculator.Rproj in RStudio and use `shiny::runApp(".")` to launch the interface.
+After extracting the complete archive, use the existing R project and README startup instructions. A maintainer with repository write access can commit the reviewed source changes to a separate branch. The deployment workflow is manual; reviewing or committing changes does not itself publish the app.

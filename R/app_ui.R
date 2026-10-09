@@ -23,7 +23,8 @@ calculator_ui <- function() {
           shiny::selectInput("calculator", "Calculator", choices = c(
             "Single proportion" = "single_proportion", "Two proportions" = "two_proportions",
             "Single mean" = "single_mean", "Two means" = "two_means",
-            "Taro Yamane finite population" = "yamane"), selectize = FALSE),
+            "Taro Yamane finite population" = "yamane", "ROC AUC" = "auc", "Diagnostic accuracy" = "diagnostic", "Pearson correlation" = "correlation", "Manual 2 by 2 measures" = "effects"), selectize = FALSE),
+          advanced_inputs(),
           shiny::tags$div(class = "form-divider"),
           shiny::conditionalPanel("input.calculator === 'two_proportions' || input.calculator === 'two_means'",
             shiny::textInput("group1_name", "First group name", "Group 1"),
@@ -121,7 +122,7 @@ calculator_ui <- function() {
               shiny::numericInput("fixed_n2", "Group 2 complete sample size", 100, min = 2, step = 1),
               shiny::tags$p(class = "field-help", "Enter whole-number analysable group sizes. Power uses the selected comparison hypothesis.")),
             shiny::tags$p(class = "method-note", "Two independent groups · Normal approximation")),
-          shiny::conditionalPanel("(input.calculator !== 'two_proportions' && input.calculator !== 'two_means') || input.comparison_mode === 'sample_size'",
+          shiny::conditionalPanel("['single_proportion','single_mean','yamane'].includes(input.calculator) || (['two_proportions','two_means'].includes(input.calculator) && input.comparison_mode === 'sample_size') || (['auc','diagnostic','correlation'].includes(input.calculator) && input.advanced_mode === 'sample_size')",
             shiny::numericInput("nonresponse_pct", "Expected non-response (%)", 10, min = 0, max = 99.999, step = 1),
             shiny::tags$p(class = "field-help", "Enter 0 for no adjustment. For comparisons, this applies to each group.")),
           shiny::tags$div(class = "input-note", "Results update as you change the inputs.")
@@ -131,6 +132,7 @@ calculator_ui <- function() {
           shiny::tags$section(class = "report-panel",
             shiny::tabsetPanel(id = "report_tab", type = "tabs",
               shiny::tabPanel("Calculation report", value = "report", shiny::uiOutput("report_preview")),
+              shiny::tabPanel("Planning plots", value = "plots", shiny::uiOutput("plot_controls"), shiny::plotOutput("planning_plot", height = "440px"), shiny::uiOutput("plot_downloads")),
               shiny::tabPanel("Markdown", value = "markdown",
                 shiny::tags$div(class = "markdown-toolbar",
                   shiny::tags$p("Includes LaTeX equations for Quarto and R Markdown."),

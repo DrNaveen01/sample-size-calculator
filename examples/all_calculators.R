@@ -1,5 +1,5 @@
 # Run from the project root. Every output uses the same report source.
-for (path in c("single_proportion.R", "planning.R", "report.R", "reports_extended.R", "reports_objectives.R", "exports.R")) source(file.path("R", path))
+for (path in c("single_proportion.R", "planning.R", "report.R", "reports_extended.R", "reports_objectives.R", "exports.R", "advanced.R", "effects.R", "plots.R", "reports_advanced.R")) source(file.path("R", path))
 dir.create("output", showWarnings = FALSE)
 results <- list(
   single_proportion = single_proportion(.5, .05, nonresponse = .1),

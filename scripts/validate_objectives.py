@@ -54,7 +54,7 @@ for kind, objective, m1, m2, s1, s2, p1, p2, ratio, alpha, margin, lower, upper 
 
 fixture = Path(__file__).resolve().parents[1]/'tests/fixtures/independent-objective-planning.csv'
 with fixture.open('w', newline='') as stream:
-    writer = csv.DictWriter(stream, fieldnames=rows[0])
+    writer = csv.DictWriter(stream, fieldnames=rows[0], lineterminator="\n")
     writer.writeheader()
     writer.writerows(rows)
 

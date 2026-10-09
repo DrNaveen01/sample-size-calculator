@@ -144,3 +144,7 @@ No cluster design effect, paired correlation, multiplicity adjustment, exact t-t
 9. NCSS. *Equivalence tests for the difference between two proportions*. https://www.ncss.com/wp-content/themes/ncss/pdf/Procedures/PASS/Equivalence_Tests_for_the_Difference_Between_Two_Proportions.pdf
 10. Penn State Department of Statistics. *STAT 500 Comparing two population parameters*. https://online.stat.psu.edu/stat500/Lesson07
 11. Israel GD. *Determining sample size*. University of Florida IFAS Extension, PEOD6. https://ask.ifas.ufl.edu/publication/PD006
+
+## Additional methods
+
+See [AUC, diagnostic accuracy, Pearson correlation and 2 by 2 measures](advanced-methods.md) for formulas, assumptions, rounding and primary references.

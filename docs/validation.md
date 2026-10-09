@@ -1,14 +1,25 @@
-# Implementation verification
+# Validation summary
 
-Verified on 8 October 2026.
+Verified locally on 9 October 2026 against repository base `8c0dbe326d5c6ce97e831ea4a96790fc8c498270`. This distinguishes numerical checks, automated behaviour, rendered inspection and checks that were not performed.
 
-Engine, report, export, and Shiny server tests passed for all five calculators. Both two-group calculators support equality, superiority, non-inferiority, and equivalence in sample-size and fixed-size power modes. The original single-proportion API and source-loading sequence remain supported.
+## Automated checks
 
-## Independent calculation checks
+The final full R run passed **556 expectations in 38 test cases**, with zero failures, warnings, errors or skips. It covers the preserved APIs, five original calculators, all four two-group objectives, fixed-complete-size power, allocation, SD modes, OR/RR conversions, active-input validation, server stale-result clearing, new engines, report content and actual PDF/Word generation. `output/test-results.csv` records the run. The subsequent correlation report notation refinement was checked separately and its examples regenerated.
 
-Equality calculations were checked against statsmodels 0.14.6: pooled-null and unpooled-alternative variance for proportions, and specified-variance normal power for means. The existing fixture covers equal and unequal allocation, different SDs, multiple power targets, and significance levels. A published PASS example (.54 versus .44, 90% power, two-sided 5%) reproduces 524 complete observations per group and approximately 90.05% power.
+## Independent numerical verification
 
-Seven additional fixtures cover directional and equivalence objectives for both outcomes. Directional results use independent statsmodels normal-power checks. Equivalence results integrate a standardized normal density over the joint rejection interval and solve the target-power equation with SciPy's root finder. This checks joint power without reusing the R engine's CDF calculation. Fixtures compare unrounded first-group size, both upward-rounded counts, and power at the complete counts. Symmetric equivalence also matches its analytic special case.
+Python verification regenerated 30 numerical fixtures: eight equality cases, seven directional/joint-equivalence cases, twelve additional planning cases and three effect-table cases. The fixture files did not change on regeneration. Verification scripts are independent of the R application. Their use validates implementation of the declared approximation, not its clinical adequacy for every design.
+
+- Existing equality references use statsmodels 0.14.6 normal-power engines, including pooled-null/unpooled-alternative proportion variance and specified-variance mean power. The published PASS .54 versus .44 example gives 524 complete observations per group and about 90.05% power.
+- Directional references use independent normal-power calculations. Equivalence integrates the standardized normal density over the **joint** rejection interval using SciPy and independently solves the sample-size equation. This does not substitute single-component power for joint power.
+- AUC references independently implement the published Hanley–McNeil variance and integrate the normal rejection region with SciPy. Independent and paired variances are separate; paired calculations use explicit estimated-AUC correlation, not raw-score correlation or an invented covariance.
+- Diagnostic Wilson/Wald anticipated intervals are checked against statsmodels; benchmark tests use independently integrated normal-score power. Quotas and prevalence-based recruitment maxima are checked independently.
+- Pearson calculations use independently integrated, uncorrected Fisher-z normal power and back-transformed anticipated intervals. These are not exact Pearson t-test or bias-corrected `pwr.r.test` calculations.
+- Effect-table ratios and confidence limits are checked against statsmodels Table2x2 and independently computed Newcombe Wilson limits. R `stats::fisher.test` supplies conditional odds ratio and exact interval when zero cells are left uncorrected.
+
+Exact methods, approximation assumptions and references are in [methods](methods.md) and [additional methods](advanced-methods.md).
+
+## Worked results
 
 | Example | Complete target | Recruitment target with 10% non-response |
 |:---|:---|:---|
@@ -27,20 +38,46 @@ Other checks cover direction reversal, reciprocal allocation, zero superiority m
 
 Calculation precision is retained internally. Final power percentages have at most two decimal places. Reports use n_final notation and explain upward rounding once, rather than repeatedly showing rounding operators. For equal mean SDs 15 and a difference of 5, 10% non-response gives 157 recruits per group; inflating the already-rounded complete count would incorrectly give 158 under this app's convention.
 
-## Interface and export checks
 
-A real Chromium browser exercised all five calculators, all comparison objectives, power and sample-size modes, direction controls, unequal allocation, separate/direct/reference SD modes, names, OR/RR inputs, invalid-input clearing, and reset. On desktop, wheel scrolling one column left the other column and document position unchanged. Desktop (1440 by 1050) and mobile (390 by 844) layouts had no horizontal page overflow.
+The original five calculators preserve inflation from unrounded sizes. The new modules first establish whole complete quotas, then inflate and round each recruitment quota. Both conventions retain full internal precision, report their convention, and sum per-group counts consistently. For the original equal-SD mean example, recruitment is 157 per group rather than the 158 obtained by first inflating the rounded complete quota.
 
-Both copy buttons and actual Markdown, PDF, and Word downloads were checked. Clipboard text exactly matched downloaded Markdown. Power displays followed the two-decimal maximum. Custom names appeared in controls, result cards, legends, and exported reports. Native MathML was present, including proper pooled-SD headings.
+| New example | Complete requirement | Recruitment target |
+|:---|:---|:---|
+| AUC .8, normal CI half-width .05, equal strata | 151 diseased + 151 non-diseased | 302 with no losses |
+| Paired AUC .8 versus .75, estimated-AUC correlation .5, 80% power, two-sided .05 | 341 diseased + 341 non-diseased | 379 + 379 = 758 with 10% losses |
+| Joint Wilson sensitivity .85/specificity .90, each half-width .05, prevalence .20 | 196 diseased, 141 non-diseased quotas; population cohort 980 | 1,089 with 10% losses; sensitivity limits recruitment |
+| Pearson .30 versus zero, 80% power, two-sided .05 | 85 participant pairs | 85 with no losses |
+| Pearson .30, correlation-scale interval half-width .10 | 320; anticipated interval .19683425 to .39659521 | 356 with 10% losses |
+| 2×2 rows (20,80) and (40,60) | 200 observed participants | Not recruitment planning; OR .375, RR .5, RD −.2, NNT 5 |
 
-All fourteen worked scenarios were generated as Markdown and HTML. Seven representative PDF/Word pairs were rendered and inspected page by page: single proportion, single mean, reported pooled SD, reference-pooled non-inferiority, proportion superiority, proportion equivalence, and Yamane. Generic formulas, legends, substituted values, intermediate calculations, interpretation, assumptions, references, and page numbers were reviewed. Word equations use native OMML. Word comparisons flow naturally across pages, and PDF legend headings stay with their table headers and first rows.
+## Browser and visual inspection
 
-## Reproduce checks
+A real Chromium headless browser exercised all nine calculators and all four trial objectives. It checked invalid AUC covariance input clears results and Markdown, fixed-size AUC power, case-control risk-measure suppression, actual diagnostic Word download, mobile horizontal overflow and independent desktop column scrolling. There were no page JavaScript errors. At 1440×1050, input scrolling moved 500 pixels while output and document positions stayed fixed; at 390×844 there was no horizontal page overflow. Evidence and representative screenshots are in `output/browser/`. This is a smoke test, not a comprehensive accessibility or cross-browser audit.
 
-To run the R checks and regenerate worked reports, source scripts/run_tests.R and examples/all_calculators.R from the project root.
+All 14 original scenarios and 21 new scenarios were generated reproducibly as Markdown and HTML; original PDF/Word reports and four representative new PDF/Word pairs are included. The four new pairs (paired AUC, joint diagnostics, correlation precision and trial effect table) were rendered and inspected page by page. Native editable Word equations, numerical substitutions, tables, plots, references and page numbers were reviewed. Long reference URLs that overflowed PDF margins were replaced by descriptive working hyperlinks. The report pipeline and template were preserved. Images and equations in source alone were not used as visual evidence.
 
-For independent Python fixtures, install statsmodels 0.14.6 and SciPy in a verification environment, then run scripts/validate_independently.py and scripts/validate_objectives.py from the project root. Python is not an app dependency.
+## Dependency and deployment verification
 
-The checked runtime used R 4.3.3, Shiny 1.8.0, rmarkdown 2.25, testthat 3.2.1, Pandoc 3.1.3, and TeX Live. The GitHub Actions workflow runs application tests and generates reports; the project is a Shiny application rather than an R package.
+The original lock reproduced `rsconnect` dependency parsing failure (`subscript out of bounds`, unresolved `otel` dependency). A canonical regenerated lock contains the transitive dependency closure. Local `rsconnect` dependency parsing and manifest generation passed with **59 dependencies**. No shinyapps.io publication was performed; credentials are read only by the explicit deployment script/workflow and are not bundled.
 
-The current implementation was verified locally. GitHub branch creation returned HTTP 403, "Resource not accessible by integration"; this extension has not been submitted or verified remotely. No hosted Shiny deployment was performed. AUC, sensitivity, specificity, and diagnostic accuracy remain on the later-update roadmap.
+GitHub branch creation returned HTTP 403, “Resource not accessible by integration.” The deliverable contains the complete local update. No remote update, GitHub Actions execution, merge, deployment or issue closure is claimed. The consolidated CI configuration is checked locally through its component commands; its hosted run remains unverified.
+
+## Reproduce
+
+Run from the project root after installing the documented R dependencies:
+
+```sh
+Rscript --vanilla scripts/run_tests.R
+python scripts/validate_independently.py
+python scripts/validate_objectives.py
+python scripts/validate_advanced.py
+Rscript --vanilla examples/all_calculators.R
+Rscript --vanilla examples/advanced_calculators.R
+Rscript --vanilla scripts/deployment_preflight.R
+```
+
+Python is a verification dependency, not an application dependency. Use SciPy and statsmodels 0.14.6. The checked environment used R 4.3.3, Shiny 1.8.0, rmarkdown 2.25, testthat 3.2.1, Pandoc and TeX Live. To repeat the browser smoke test, install Playwright in a verification environment, start `shiny::runApp(host="127.0.0.1", port=8766)` and run `node scripts/browser_smoke.cjs`; `APP_URL` and `CHROME_EXECUTABLE` can override its defaults.
+
+## Unresolved scope and limitations
+
+See the [feature matrix](feature-matrix.md). Spearman, dependent/repeated-measures correlations, partial AUC/pilot-data DeLong planning, exact diagnostic-binomial planning and exact t/Welch group planning remain explicitly deferred. Population prevalence planning supplies expected strata, not a probabilistic guarantee that quotas will be reached. Paired AUC planning requires a justified estimated-AUC correlation and provides sensitivity analysis. Joint diagnostic precision uses individual endpoint confidence levels, not simultaneous coverage. Normal approximations need design-specific assessment for small samples, extreme probabilities or uncertain covariance. Hosted deployment, remote CI and a clean isolated `renv::restore()` were not run.

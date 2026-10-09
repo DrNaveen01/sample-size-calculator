@@ -4,7 +4,7 @@ missing <- required[!vapply(required, requireNamespace, logical(1), quietly = TR
 if (length(missing)) stop("Install missing packages using source('scripts/setup.R'): ", paste(missing, collapse = ", "), call. = FALSE)
 if (!rmarkdown::pandoc_available()) stop("Pandoc is required. Use RStudio or install Pandoc before starting the app.", call. = FALSE)
 
-for (file in c("single_proportion.R", "planning.R", "report.R", "reports_extended.R", "reports_objectives.R", "exports.R", "app_ui.R", "app_server.R")) {
+for (file in c("single_proportion.R", "planning.R", "report.R", "reports_extended.R", "reports_objectives.R", "exports.R", "advanced.R", "effects.R", "plots.R", "reports_advanced.R", "advanced_ui.R", "app_ui.R", "app_server.R")) {
   source(file.path("R", file), local = TRUE)
 }
 shiny::shinyApp(ui = calculator_ui(), server = calculator_server)

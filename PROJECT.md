@@ -15,7 +15,7 @@ Develop transparent and reproducible sample-size calculators for research, with 
 - Target power and unequal allocation for sample size, or complete group sizes for approximate power
 - Editable group names in input labels, results, formula legends, and all reports
 - Taro Yamane simplified finite-population survey formula with explicit assumptions
-- Non-response inflation of unrounded sizes, followed by separate upward rounding of complete and recruitment targets
+- Original calculators: non-response inflation of unrounded sizes, followed by separate upward rounding of complete and recruitment targets; new modules: whole complete quotas are inflated and rounded, as documented
 - Power results displayed to at most two decimal places; full precision retained internally
 - Independent scrolling of input and results columns on desktop; stacked scrolling on mobile
 - Shared reports with generic formulas, legends, substituted values, interpretation, assumptions, and references
@@ -28,13 +28,17 @@ Keep calculations separate from reports. Use one report source across outputs. S
 
 The equality option tests a zero difference; it does not demonstrate identical groups. Non-significance in that test does not establish equivalence or non-inferiority. Comparison objectives follow [ICH E9, sections 3.3.2 and 3.5](https://www.ema.europa.eu/en/documents/scientific-guideline/ich-e-9-statistical-principles-clinical-trials-step-5_en.pdf).
 
-## Next update
+## Additional implemented scope
 
-AUC estimation, sensitivity, specificity, and diagnostic-accuracy sample-size calculations. These are recorded for later implementation. Define estimation precision versus hypothesis testing and the required diseased/non-diseased counts before selecting methods.
+Full AUC estimation/testing and independent/paired comparison, diagnostic sensitivity/specificity/joint precision and benchmark tests, Pearson correlation estimation/testing and independent comparison, manual 2 by 2 measures, and explanatory planning plots. See [feature matrix](docs/feature-matrix.md) and [additional methods](docs/advanced-methods.md).
 
-## Other deferred methods
+## Deferred methods
 
-Cluster designs, paired designs, exact t or Welch planning, continuity corrections, exact binomial methods, general finite population corrections for the other calculators, and the separate 2 by 2 effect-measure calculator.
+Spearman, dependent-correlation and repeated-measures planning; exact Pearson t-test power; partial AUC and pilot-data DeLong resizing; exact binomial diagnostic tests; predictive-value precision; cluster designs, paired group-outcome designs, exact t or Welch planning, continuity corrections for group planning, and general finite-population corrections.
+
+## Issue coverage
+
+Issues #2 and #3 have their core single-proportion and two-proportion scope implemented. Issue #5 now has the 2 by 2 calculator, with design-specific measure suppression and confidence intervals. No issue has been closed automatically. Optional pwr/effectsize comparisons mentioned in issue #2 are not claimed as completed: the existing fixtures use independent statsmodels and SciPy checks.
 
 ## Definition of done
 

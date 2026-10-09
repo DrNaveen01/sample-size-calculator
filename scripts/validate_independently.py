@@ -19,7 +19,7 @@ for m1,m2,s1,s2,power,alpha,k in [(100,105,15,15,.8,.05,1),(100,105,15,15,.8,.05
  scenarios.append(dict(type='two_means',mean1=m1,mean2=m2,sd1=s1,sd2=s2,power=power,alpha=alpha,ratio=k,n10=float(n),n1=c1,n2=c2,achieved=float(actual)))
 Path('tests/fixtures').mkdir(exist_ok=True)
 with open('tests/fixtures/independent-normal-planning.csv','w') as f:
- writer=csv.DictWriter(f,fieldnames=['type','p1','p2','mean1','mean2','sd1','sd2','power','alpha','ratio','n10','n1','n2','achieved'])
+ writer=csv.DictWriter(f,fieldnames=['type','p1','p2','mean1','mean2','sd1','sd2','power','alpha','ratio','n10','n1','n2','achieved'],lineterminator='\n')
  writer.writeheader();writer.writerows(scenarios)
 print('statsmodels',statsmodels.__version__)
 for s in scenarios:print(s)

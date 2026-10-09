@@ -2,6 +2,7 @@ calculator_server <- function(input, output, session) {
   result_state <- shiny::reactive({
     tryCatch({
       type <- if (is.null(input$calculator)) "single_proportion" else input$calculator
+      if(type %in% c("auc","diagnostic","correlation","effects")) return(list(result=advanced_from_inputs(input,type),error=NULL))
       comparison <- type %in% c("two_proportions", "two_means")
       sizing <- !comparison || is.null(input$comparison_mode) || input$comparison_mode == "sample_size"
       if (sizing) check_number(input$nonresponse_pct, "Expected non-response (%)", 0, 100, FALSE, TRUE)
@@ -100,11 +101,18 @@ calculator_server <- function(input, output, session) {
     shiny::updateSelectInput(session, "direction", label = paste("Direction of benefit for", second))
   })
 
+  shiny::observe({
+    if(!is.null(input$auc_name1)) shiny::updateNumericInput(session,"auc_value",label=paste(input$auc_name1,"anticipated AUC"))
+    if(!is.null(input$auc_name2)) shiny::updateNumericInput(session,"auc_second",label=paste(input$auc_name2,"anticipated AUC"))
+    if(!is.null(input$corr_name1)) shiny::updateNumericInput(session,"corr_r",label=paste(input$corr_name1,"anticipated Pearson correlation"))
+    if(!is.null(input$corr_name2)) shiny::updateNumericInput(session,"corr_second",label=paste(input$corr_name2,"anticipated Pearson correlation"))
+  })
   output$result_summary <- shiny::renderUI({
     value <- result_state()
     if (!is.null(value$error)) return(shiny::tags$section(class = "error-panel", role = "alert",
       shiny::tags$h2("Check the inputs"), shiny::tags$p(value$error)))
     x <- value$result
+    if(inherits(x,"extended_result")) return(advanced_summary(x))
     comparison <- inherits(x, "two_group_result")
     power_mode <- comparison && x$mode == "power"
     detail <- function(label, value) shiny::tags$div(shiny::tags$span(label), shiny::tags$strong(value))
@@ -169,6 +177,42 @@ calculator_server <- function(input, output, session) {
     content = function(file) shiny::withProgress(message = "Preparing PDF report", value = 0.5,
       calculation_export(current_result(), file, "pdf")))
 
+  plot_state <- shiny::reactive({
+    if(!is.null(result_state()$error)) return(list())
+    planning_plots(current_result())
+  })
+  output$plot_controls <- shiny::renderUI({
+    p <- plot_state()
+    if(!length(p)) return(shiny::tags$p("No planning plots apply to this calculator."))
+    shiny::selectInput("plot_choice","Planning illustration",setNames(names(p),vapply(p,function(x)x$title,character(1))),selectize=FALSE)
+  })
+  chosen_plot <- shiny::reactive({
+    p<-plot_state(); shiny::req(length(p)>0)
+    key<-input$plot_choice
+    if(is.null(key)||!key %in% names(p)) key<-names(p)[1]
+    p[[key]]
+  })
+  output$planning_plot <- shiny::renderPlot({
+    if(!length(plot_state())) {plot.new();return(invisible(NULL))}
+    draw_planning_plot(chosen_plot())
+  },res=120)
+  output$plot_downloads <- shiny::renderUI({
+    if(!length(plot_state())) return(NULL)
+    shiny::tagList(shiny::downloadButton("download_plot","Download plot PNG"),shiny::downloadButton("download_plot_data","Download plot data CSV"))
+  })
+  output$download_plot <- shiny::downloadHandler(filename=function() paste0(calculation_key(current_result()),"_planning.png"),content=function(file) plot_png(chosen_plot(),file))
+  output$download_plot_data <- shiny::downloadHandler(filename=function() "planning-data.csv",content=function(file) {
+    p<-chosen_plot()
+    data<-if(p$kind=="curve") p$data else data.frame(expected=p$difference,null_boundary=p$boundary,rejection_limit=p$reject)
+    write.csv(data,file,row.names=FALSE)
+  })
+  shiny::observe({
+    type<-input$calculator
+    estimation<-(identical(type,"auc")&&identical(input$auc_objective,"estimate")) || (identical(type,"diagnostic")&&!is.null(input$diag_objective)&&!startsWith(input$diag_objective,"test_")) || (identical(type,"correlation")&&identical(input$corr_objective,"estimate"))
+    if(estimation) shiny::updateSelectInput(session,"advanced_mode",choices=c("Sample size"="sample_size"),selected="sample_size")
+    else shiny::updateSelectInput(session,"advanced_mode",choices=c("Sample size"="sample_size","Power at fixed complete counts"="power"))
+  })
+
   # Reset values for the selected calculator while keeping the selection.
   shiny::observeEvent(input$reset, {
     defaults <- list(p_pct = 50, absolute_pct = 5, relative_pct = 10, confidence_pct = 95,
@@ -178,6 +222,14 @@ calculator_server <- function(input, output, session) {
       fixed_n1 = 100, fixed_n2 = 100, ni_pp = 5, ni_mean = 5, superiority_pp = 0, superiority_mean = 0,
       lower_pp = -5, upper_pp = 5, lower_mean = -5, upper_mean = 5, pooled_sd = 15,
       ref_n1 = 50, ref_n2 = 100, population_size = 1000, yamane_precision_pct = 5)
+    advanced_defaults <- list(advanced_confidence=95,advanced_alpha=5,advanced_power=80,
+      auc_value=.8,auc_precision=.05,auc_null=.5,auc_second=.75,auc_cohort_ratio=1,auc_rho=.5,auc_prevalence=20,auc_ratio=1,auc_cases=100,auc_controls=100,
+      diag_sens=85,diag_spec=90,diag_dsens=5,diag_dspec=5,diag_benchmark=70,diag_prevalence=20,diag_n=100,
+      corr_r=.3,corr_null=0,corr_second=.1,corr_precision=.1,corr_ratio=1,corr_n1=100,corr_n2=100,effects_a=20,effects_b=80,effects_c=40,effects_d=60)
+    defaults <- c(defaults,advanced_defaults)
+    advanced_selections <- list(advanced_mode="sample_size",advanced_alternative="two.sided",auc_objective="estimate",auc_recruitment="separate",diag_objective="sensitivity",diag_interval="wilson",diag_recruitment="population",corr_objective="test",corr_scale="correlation",effects_design="cohort",effects_correction="none")
+    for(name in names(advanced_selections)) shiny::updateSelectInput(session,name,selected=advanced_selections[[name]])
+    for(pair in list(c("auc_name1","Test 1"),c("auc_name2","Test 2"),c("corr_name1","Population 1"),c("corr_name2","Population 2"),c("effects_name1","Exposed or treatment"),c("effects_name2","Unexposed or control"))) shiny::updateTextInput(session,pair[1],value=pair[2])
     for (name in names(defaults)) shiny::updateNumericInput(session, name, value = defaults[[name]])
     shiny::updateRadioButtons(session, "precision_type", selected = "absolute")
     shiny::updateRadioButtons(session, "confidence_mode", selected = "confidence")

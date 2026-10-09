@@ -108,7 +108,7 @@ source("scripts/run_tests.R")
 source("examples/all_calculators.R")
 ```
 
-The downloadable bundle includes Markdown and HTML examples for every scenario, and seven PDF/Word example pairs covering the single calculators, pooled SD, non-inferiority, superiority, equivalence, and Yamane. The example script regenerates all formats for every scenario.
+The downloadable bundle includes Markdown and HTML examples for every scenario, and PDF/Word examples for all 14 original scenarios plus four representative new pairs covering paired AUC, joint diagnostics, correlation precision and manual effects. The example script regenerates all formats for every scenario.
 
 The original `single_proportion()` and `single_proportion_export()` functions and their original source-loading sequence remain supported. New calculators and exports use the source-loading sequence above. R calculation APIs accept probabilities as fractions; the interface accepts percentages.
 
@@ -129,6 +129,34 @@ The original `single_proportion()` and `single_proportion_export()` functions an
 
 See [methods](docs/methods.md), [validation](docs/validation.md), and [deployment](docs/deployment.md). An R-capable Shiny host is required; GitHub Pages cannot execute this app.
 
-AUC estimation, sensitivity, specificity, and diagnostic-accuracy calculations are planned for a later update; see [development plan](PROJECT.md).
+## Additional calculators and planning plots
+
+The application also includes full ROC AUC estimation, single-AUC testing against an arbitrary null, independent and paired AUC comparisons, sensitivity/specificity/joint precision, accuracy benchmark tests, Pearson correlation estimation and testing, independent correlation comparison, and manual 2 by 2 effect measures.
+
+AUC planning uses Hanley-McNeil variance and a normal approximation. Paired comparisons require the correlation between estimated AUCs; raw test-score correlation is not interchangeable. Diagnostic estimation offers Wilson expected intervals or Wald planning. Correlation uses an explicitly uncorrected Fisher-z approximation. Read [additional methods](docs/advanced-methods.md) before applying these calculators.
+
+Two-group trial plots show hypothesis boundaries, approximate power, expected-effect sensitivity, and non-inferiority/equivalence margin sensitivity. New modules provide precision, prevalence, covariance, and correlation sensitivity plots where applicable. Download plots as PNG and plot data as CSV. The same report source embeds portable PNG plots in Markdown, HTML, PDF and Word. Self-contained Markdown files are larger because their figures use data URIs.
+
+New modules solve for minimum whole-number complete quotas and then inflate those quotas for losses. Existing calculators retain their documented original rounding convention. Population disease recruitment targets are based on expected prevalence and do not guarantee realised quotas.
+
+For the new R APIs:
+
+```r
+for (name in c("single_proportion", "planning", "report", "reports_extended",
+               "reports_objectives", "exports", "advanced", "effects", "plots",
+               "reports_advanced")) source(paste0("R/", name, ".R"))
+auc_sample(auc = .80, objective = "estimate", precision = .05)
+auc_sample(auc = .80, null_auc = .65, objective = "test")
+auc_sample(auc = .80, auc2 = .75, objective = "paired", auc_correlation = .50)
+diagnostic_sample(objective = "joint", prevalence = .20, nonresponse = .10)
+correlation_sample(r = .50, r0 = .20)
+correlation_sample(r = .30, objective = "estimate", precision = .10)
+effect_table(20, 80, 40, 60, design = "trial")
+source("examples/advanced_calculators.R")
+```
+
+Opening the project does not automatically download renv. To use the pinned environment, install renv and run `renv::restore(prompt = FALSE)`; set `CALCULATOR_USE_RENV=true` to activate its library automatically. The lockfile records the tested R 4.3.3 environment. Deployment is manual through GitHub Actions; ordinary pushes do not publish the app.
+
+See [feature matrix](docs/feature-matrix.md), [validation](docs/validation.md), and [development plan](PROJECT.md).
 
 MIT licence. Copyright 2026 Dr Naveen Suthar.
