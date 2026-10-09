@@ -87,7 +87,7 @@ jobs:
 
           rsconnect::deployApp(
             appDir = ".",
-            appName = "sample-size-calculator",
+            appName = "aiims-sample-size-calculator",
             account = Sys.getenv("SHINYAPPS_ACCOUNT"),
             forceUpdate = TRUE,
             launch.browser = FALSE
