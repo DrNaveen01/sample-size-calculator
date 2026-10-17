@@ -4,6 +4,11 @@ trial_arguments <- function(x) {
   shared <- list(alpha=x$alpha,objective=x$objective,direction=x$direction,margin=x$margin,
     lower=x$lower,upper=x$upper,group1=x$group1,group2=x$group2,
     power=if(is.null(x$power)) .8 else x$power,ratio=x$ratio,nonresponse=0)
+  if (identical(x$design_source, "direct")) shared$design_effect <- x$design_effect
+  if (identical(x$design_source, "icc")) {
+    shared$icc <- x$icc
+    shared$cluster_size <- x$cluster_size
+  }
   if(inherits(x,"two_means_result")) c(list(mean1=x$mean1,mean2=x$mean2,sd1=x$sd1,sd2=x$sd2),shared)
   else c(list(p1=x$p1,p2=x$p2),shared)
 }

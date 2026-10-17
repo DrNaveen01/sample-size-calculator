@@ -55,7 +55,7 @@ single_proportion_markdown <- function(x) {
     paste0("| $Z_{1-\\alpha/2}$ | Standard-normal critical value | ", v$z, " |"),
     paste0("| $r$ | Expected non-response proportion | ", v$nonresponse,
            " (", display_percent(x$nonresponse), ") |"),
-    paste0("| $n_0$ | Unrounded base number of complete observations | ", v$n0, " |"),
+    paste0("| $n_0$ | Unrounded complete target after design and finite-frame adjustments | ", v$n0, " |"),
     paste0("| $n_{\\mathrm{adj}}$ | Unrounded number after non-response adjustment | ", v$n_adjusted, " |"),
     paste0("| $n_{\\mathrm{final}}$ | Final recruitment target rounded upward | ", display_number(x$n_final), " |")
   )
@@ -99,9 +99,9 @@ single_proportion_markdown <- function(x) {
     "# Sample size calculation for a single population proportion", "",
     paste0("**Final recruitment target: ", display_count(x$n_final), " participants.**"), "",
     "This report documents a precision-based sample-size calculation for estimating one population proportion.",
-    "It uses the normal approximation with independent observations and optional non-response adjustment.", "",
+    "It uses the normal approximation with a configurable design effect, optional finite population correction and non-response adjustment.", "",
     "## Generic formulas", "",
-    formula("n_0 = \\frac{Z_{1-\\alpha/2}^{2}\\,p(1-p)}{d^{2}}"),
+    formula("n_{\\mathrm{SRS}} = \\frac{Z_{1-\\alpha/2}^{2}\\,p(1-p)}{d^{2}}"),
     formula("n_{\\mathrm{adj}} = \\frac{n_0}{1-r}"),
     "The complete sample $n_{\\mathrm{complete}}$ and final recruitment target $n_{\\mathrm{final}}$ are the respective unrounded values rounded upward to whole participants.", "",
     "## Legends and input values", "", legends, "",
@@ -109,9 +109,9 @@ single_proportion_markdown <- function(x) {
     "### Confidence level and critical value", "", z_step, "",
     "### Precision", "", precision_step, "",
     "### Base sample size", "",
-    formula(paste0("n_0\\approx\\frac{(", v$z, ")^{2}\\times", v$p,
+    formula(paste0("n_{\\mathrm{SRS}}\\approx\\frac{(", v$z, ")^{2}\\times", v$p,
                    "\\times(1-", v$p, ")}{(", v$d, ")^{2}}")),
-    formula(paste0("n_0\\approx ", v$n0)),
+    formula(paste0("n_{\\mathrm{SRS}}\\approx ", display_number(x$n_srs))),
     formula(paste0("n_{\\mathrm{complete}}=", display_number(x$n_complete))),
     "Here $n_{\\mathrm{complete}}$ is the whole-number target for complete observations before non-response adjustment.", "",
     "### Non-response adjustment and final rounding", "",
@@ -123,8 +123,10 @@ single_proportion_markdown <- function(x) {
     "## Assumptions and limitations", "",
     "- This method plans precision for estimation; it does not calculate power for a hypothesis test.",
     "- Sampling is assumed to yield independent observations representative of the target population.",
-    "- The population is treated as large relative to the sample; no finite population correction is applied.",
-    "- No cluster design effect or correction for measurement error is applied.",
+    if (is.null(x$population_size)) "- No finite population correction was selected." else
+      "- Finite-population correction assumes sampling without replacement from the specified finite eligible frame.",
+    if (x$design_effect == 1) "- No variance inflation was selected." else
+      "- The entered design effect approximates within-cluster dependence. Check cluster counts and actual cluster-size variability.",
     "- The normal approximation may perform poorly for rare outcomes or small expected category counts.",
     "- Non-response inflation compensates for expected loss of sample size; it does not remove non-response bias.",
     "- The anticipated proportion is a planning assumption, and the achieved precision depends on the observed data."

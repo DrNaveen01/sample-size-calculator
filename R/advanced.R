@@ -50,14 +50,135 @@ auc_variance <- function(auc, m, n) {
   q1 <- auc/(2-auc); q2 <- 2*auc^2/(1+auc)
   (auc*(1-auc)+(m-1)*(q1-auc^2)+(n-1)*(q2-auc^2))/(m*n)
 }
+# Reproduces the logit-AUC expression in the Cleveland Clinic RiskCalc R source.
+# The RiskCalc implementation allocates ceiling(n * prevalence) diseased and
+# ceiling(n * (1 - prevalence)) non-diseased observations separately.
+auc_riskcalc_sample <- function(auc, null_auc, prevalence, alpha, power,
+                                alternative, nonresponse, cases = NULL,
+                                controls = NULL) {
+  probability(auc, "Anticipated AUC")
+  probability(null_auc, "Null AUC")
+  probability(prevalence, "Disease prevalence")
+  check_number(alpha, "Two-sided significance level", 0, .5, TRUE, TRUE)
+  check_number(nonresponse, "Non-response fraction", 0, 1, FALSE, TRUE)
+  if (alternative != "two.sided")
+    stop("The RiskCalc AUC formula requires a two-sided alternative; use Hanley-McNeil for a directional test.", call. = FALSE)
+  fixed <- !is.null(cases) || !is.null(controls)
+  if (!fixed) check_number(power, "Target power", .5, 1, TRUE, TRUE)
+  if (xor(is.null(cases), is.null(controls)))
+    stop("For fixed power, provide both diseased and non-diseased counts.", call. = FALSE)
+  if (fixed) {
+    whole_count(cases, "Complete diseased count")
+    whole_count(controls, "Complete non-diseased count")
+    prevalence <- cases / (cases + controls)
+    nonresponse <- 0
+  }
+  logit_gap <- qlogis(auc) - qlogis(null_auc)
+  if (!fixed && abs(logit_gap) < .Machine$double.eps)
+    stop("Anticipated and null AUC must differ for sample size planning.", call. = FALSE)
+  # Here k denotes diseased:non-diseased odds, not the inverse allocation.
+  k <- prevalence / (1 - prevalence)
+  variance_factor <- function(theta, ratio) {
+    (1 + ratio) * (theta / (ratio * (2 - theta)) +
+      2 * theta^2 / (1 + theta) - theta^2 * (1 / ratio + 1)) /
+      (theta^2 * (1 - theta)^2)
+  }
+  v <- variance_factor(auc, k)
+  if (!is.finite(v) || v <= 0)
+    stop("Unsupported AUC/prevalence combination for the RiskCalc variance approximation.", call. = FALSE)
+  z_alpha <- stats::qnorm(1 - alpha / 2)
+  z_beta <- if (fixed) NULL else stats::qnorm(power)
+  n_unrounded <- if (fixed) NULL else (z_alpha + z_beta)^2 * v / logit_gap^2
+  if (!fixed) {
+    check_planned_count(n_unrounded)
+    m <- ceiling(n_unrounded * prevalence)
+    n <- ceiling(n_unrounded * (1 - prevalence))
+  } else { m <- cases; n <- controls }
+  total <- m + n
+  check_planned_count(c(m, n, total, ceiling(total / (1 - nonresponse))))
+  realised_ratio <- m / n
+  v_real <- variance_factor(auc, realised_ratio)
+  achieved <- stats::pnorm(abs(logit_gap) * sqrt(total / v_real) - z_alpha)
+  recruitment_total <- ceiling(total / (1 - nonresponse))
+  counts <- data.frame(label = "Population cohort", complete = total,
+                       recruitment = recruitment_total)
+  strata <- data.frame(label = c("Diseased", "Non-diseased"), complete = c(m, n))
+  d <- display_number
+  formulas <- c(
+    "\\ell(A)=\\log\\left(\\frac{A}{1-A}\\right),\\quad k=\\frac{\\pi}{1-\\pi}",
+    "V=\\frac{1+k}{A^2(1-A)^2}\\left[\\frac{A}{k(2-A)}+\\frac{2A^2}{1+A}-A^2(1+1/k)\\right]",
+    "n_0=\\frac{(Z_{1-\\alpha/2}+Z_{1-\\beta})^2V}{[\\ell(A)-\\ell(A_0)]^2}",
+    "n_D=\\lceil n_0\\pi\\rceil,\\quad n_{ND}=\\lceil n_0(1-\\pi)\\rceil",
+    "N_{\\mathrm{complete}}=n_D+n_{ND},\\quad N_{\\mathrm{final}}=\\left\\lceil\\frac{N_{\\mathrm{complete}}}{1-r}\\right\\rceil")
+  steps <- c(
+    paste0("k=", d(prevalence), "/(1-", d(prevalence), ")\\approx", d(k)),
+    paste0("\\ell(A)-\\ell(A_0)=\\logit(", d(auc), ")-\\logit(",
+           d(null_auc), ")\\approx", d(logit_gap)),
+    paste0("V=\\frac{1+", d(k), "}{(", d(auc), ")^2(1-", d(auc),
+           ")^2}\\left[\\frac{", d(auc), "}{", d(k), "(2-", d(auc),
+           ")}+\\frac{2(", d(auc), ")^2}{1+", d(auc),
+           "}-(", d(auc), ")^2(1+1/", d(k), ")\\right]\\approx", d(v)))
+  if (!fixed) steps <- c(steps,
+    paste0("Z_{1-\\alpha/2}=", d(z_alpha), ",\\quad Z_{1-\\beta}=", d(z_beta)),
+    paste0("n_0=\\frac{(", d(z_alpha), "+", d(z_beta), ")^2\\times",
+           d(v), "}{(", d(logit_gap), ")^2}\\approx", d(n_unrounded)),
+    paste0("n_D=\\lceil", d(n_unrounded), "\\times", d(prevalence),
+           "\\rceil=", m, ",\\quad n_{ND}=\\lceil", d(n_unrounded),
+           "\\times(1-", d(prevalence), ")\\rceil=", n))
+  steps <- c(steps,
+    paste0("N_{\\mathrm{complete}}=", m, "+", n, "=", total),
+    paste0("N_{\\mathrm{final}}=\\left\\lceil", total, "/(1-",
+           d(nonresponse), ")\\right\\rceil=", recruitment_total),
+    paste0("P_{\\mathrm{approx}}=\\Phi\\left(\\frac{|", d(logit_gap),
+           "|}{\\sqrt{", d(v_real), "/", total, "}}-", d(z_alpha),
+           "\\right)\\approx", d(achieved)))
+  inputs <- c(A = auc, A_0 = null_auc, pi = prevalence, alpha = alpha,
+              if (!fixed) c(P_star = power), r = nonresponse)
+  args <- list(auc = auc, objective = "test", null_auc = null_auc,
+    alpha = alpha, power = if (fixed) .8 else power, alternative = alternative,
+    prevalence = prevalence, recruitment = "population", ratio = n / m,
+    cases = if (fixed) cases else NULL, controls = if (fixed) controls else NULL,
+    nonresponse = nonresponse, auc_method = "riskcalc")
+  x <- extended_result("auc", "ROC AUC hypothesis testing",
+    "RiskCalc / Lu (2021) logit-AUC normal approximation", inputs, formulas,
+    steps, c(A = "Anticipated AUC", A_0 = "Null hypothesis AUC",
+      pi = "Expected disease prevalence", alpha = "Two-sided type I error",
+      P_star = "Target power", r = "Non-response fraction"), counts,
+    c("Uses the Cleveland Clinic RiskCalc logit-transformed AUC expression; a normal large-sample approximation, not a DeLong test.",
+      "Two-sided alpha with the main rejection tail approximation. The distant tail is omitted in the closed-form sizing and power check.",
+      "Separate upward rounding of disease-positive and disease-negative quotas reproduces RiskCalc's allocation convention.",
+      "Prevalence governs expected recruitment composition, not guaranteed strata. Verify adequate diseased and non-diseased accrual.",
+      "Independent reference-standard confirmed disease-status strata and an anticipated full ROC AUC are assumed."),
+    c("Cleveland Clinic RiskCalc. Sample-size source: https://github.com/ClevelandClinicQHS/riskcalc-website/blob/main/samplesize/samplesize.R",
+      "Lu G. Sample size formulas for estimating areas under the receiver operating characteristic curves with precision and assurance. Western University thesis. 2021. https://ir.lib.uwo.ca/etd/8045",
+      "Wang X, Ji X. Chest. 2020;158:S12-S20. https://doi.org/10.1016/j.chest.2020.03.010"),
+    args, list(objective = "test", mode = if (fixed) "power" else "sample_size",
+      achieved_power = achieved, power = if (fixed) NULL else power,
+      strata = strata, required_diseased = m, required_nondiseased = n,
+      expected_diseased = if (fixed) NULL else total * prevalence,
+      expected_nondiseased = if (fixed) NULL else total * (1 - prevalence),
+      ratio = n / m, nonresponse = nonresponse, confidence = NULL,
+      se_alt = sqrt(v_real / total), n_unrounded = n_unrounded))
+  x
+}
+
 auc_sample <- function(auc = .8, objective = c("estimate","test","independent","paired"),
                        null_auc = .5, auc2 = .75, precision = .05,
                        confidence = .95, alpha = .05, power = .8,
                        alternative = "two.sided", ratio = 1, cohort_ratio = 1,
                        recruitment = c("separate","population"), prevalence = .2,
                        auc_correlation = NULL, nonresponse = 0, cases = NULL, controls = NULL,
-                       group1 = "Test 1", group2 = "Test 2") {
+                       group1 = "Test 1", group2 = "Test 2", auc_method = c("hanley", "riskcalc")) {
   objective <- match.arg(objective); recruitment <- match.arg(recruitment)
+  auc_method <- match.arg(auc_method)
+  if (objective == "test" && auc_method == "riskcalc") {
+    return(auc_riskcalc_sample(auc = auc, null_auc = null_auc,
+      prevalence = prevalence, alpha = alpha, power = power,
+      alternative = alternative, nonresponse = nonresponse,
+      cases = cases, controls = controls))
+  }
+  if (objective != "test" && auc_method == "riskcalc")
+    stop("RiskCalc AUC formula supports only testing one AUC against a null AUC.", call. = FALSE)
   alternative <- match.arg(alternative,c("two.sided","greater","less"))
   estimation <- objective == "estimate"; fixed <- !is.null(cases)||!is.null(controls)
   probability(auc,"Anticipated AUC")
@@ -143,6 +264,13 @@ auc_sample <- function(auc = .8, objective = c("estimate","test","independent","
       achieved_precision=if(estimation) z*se_at(cc) else NULL,strata=data.frame(label=label,complete=cc),
       anticipated_interval=if(estimation) auc+c(-1,1)*z*se_at(cc) else NULL,power=if(estimation||fixed) NULL else power,
       ratio=ratio,confidence=confidence,nonresponse=nonresponse,se_alt=se_at(cc)))
+  # Expose minimum complete diagnostic strata and population expectations separately.
+  result$required_diseased <- cc[1]
+  result$required_nondiseased <- cc[2]
+  if (objective %in% c("test", "estimate") && recruitment == "population" && !fixed) {
+    result$expected_diseased <- result$n_complete * prevalence
+    result$expected_nondiseased <- result$n_complete * (1 - prevalence)
+  }
   if(estimation && any(result$anticipated_interval < 0 | result$anticipated_interval > 1)) result$warnings <- "The anticipated normal interval extends beyond [0,1]; consider simulation or a transformed AUC interval."
   result
 }

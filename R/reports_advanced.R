@@ -35,6 +35,17 @@ extended_markdown <- function(x) {
   lines<-c(lines,"","## Numerical substitution","",unlist(lapply(x$steps,f)),"","## Complete counts and recruitment","",
     "| Group or stratum | Complete observations | Recruitment target |","|:---|---:|---:|")
   for(i in seq_len(nrow(x$counts))) lines<-c(lines,paste0("| ",escape_report_text(x$counts$label[i])," | ",display_count(x$counts$complete[i])," | ",display_count(x$counts$recruitment[i])," |"))
+  if(x$key == "auc" && x$objective %in% c("test", "estimate")) {
+    lines <- c(lines, "", "### Disease-status recruitment plan", "",
+      paste0("- Minimum complete disease-positive cases: **", display_count(x$required_diseased), "**."),
+      paste0("- Minimum complete disease-negative cases: **", display_count(x$required_nondiseased), "**."),
+      paste0("- Total complete participant target: **", display_count(x$n_complete), "**."),
+      paste0("- Final recruitment target allowing for non-response: **", display_count(x$n_final), "**."))
+    if (!is.null(x$expected_diseased)) lines <- c(lines,
+      paste0("- Expected disease-positive count in the complete population cohort: ", d(x$expected_diseased), "."),
+      paste0("- Expected disease-negative count in the complete population cohort: ", d(x$expected_nondiseased), "."),
+      "Expected counts are not guaranteed integer quotas. A prevalence-based cohort can miss the minimum positive or negative quota by chance.")
+  }
   if(!is.null(x$strata)) {
     lines<-c(lines,"","Required disease-stratum quotas:","","| Stratum | Complete observations |","|:---|---:|")
     for(i in seq_len(nrow(x$strata))) lines<-c(lines,paste0("| ",escape_report_text(x$strata$label[i])," | ",display_count(x$strata$complete[i])," |"))

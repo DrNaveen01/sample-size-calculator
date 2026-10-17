@@ -26,19 +26,33 @@ check_planned_count <- function(x) {
 #' Plan precision for estimating one population mean
 #' @param sd Anticipated population standard deviation in outcome units.
 #' @param precision Absolute margin of error in the same units.
-single_mean <- function(sd, precision, confidence = 0.95, nonresponse = 0, z = NULL) {
+single_mean <- function(sd, precision, confidence = 0.95, nonresponse = 0, z = NULL,
+                        design_effect = NULL, icc = NULL, cluster_size = NULL,
+                        population_size = NULL) {
   check_number(sd, "Standard deviation", 0, Inf, TRUE)
   check_number(precision, "Margin of error", 0, Inf, TRUE)
   check_number(nonresponse, "Non-response proportion", 0, 1, FALSE, TRUE)
   critical <- planning_confidence(confidence, z)
-  n0 <- (critical$z * sd / precision)^2
+  design <- resolve_design_effect(design_effect, icc, cluster_size)
+  population_size <- finite_population_size(population_size)
+  n_srs <- (critical$z * sd / precision)^2
+  n_design <- n_srs * design$value
+  n0 <- if (is.null(population_size)) n_design else
+    n_design * population_size / (population_size - 1 + n_design)
   adjusted <- n0 / (1 - nonresponse)
   check_planned_count(c(n0, adjusted))
   warnings <- if (ceiling(n0) < 30) {
     "The complete sample is below 30. When the standard deviation is estimated, a t-based calculation may require more observations."
   } else character()
+  if (!is.null(population_size) && ceiling(adjusted) > population_size)
+    warnings <- c(warnings, "Recruitment exceeds the finite sampling frame; the chosen precision and expected loss may be infeasible.")
+  if (design$value > 1) warnings <- c(warnings,
+    "Equal-cluster-size design effect is an approximation; separately check the number of clusters and analysis design.")
   structure(c(list(method = "Normal approximation for one population mean", sd = sd,
-    d = precision, precision = precision, nonresponse = nonresponse, n0 = n0,
+    d = precision, precision = precision, nonresponse = nonresponse,
+    design_effect = design$value, design_source = design$source,
+    icc = design$icc, cluster_size = design$cluster_size,
+    population_size = population_size, n_srs = n_srs, n_design = n_design, n0 = n0,
     n_adjusted = adjusted, n_complete = ceiling(n0), n_final = ceiling(adjusted),
     warnings = warnings), critical), class = "single_mean_result")
 }
@@ -212,8 +226,10 @@ two_proportions <- function(p1, p2 = NULL, power = 0.80, alpha = 0.05,
                             ratio = 1, nonresponse = 0, n1 = NULL, n2 = NULL,
                             effect_type = c("proportions", "or", "rr"), effect = NULL,
                             objective = "equality", direction = "higher", margin = 0,
-                            lower = NULL, upper = NULL, group1 = "Group 1", group2 = "Group 2") {
+                            lower = NULL, upper = NULL, group1 = "Group 1", group2 = "Group 2",
+                            design_effect = NULL, icc = NULL, cluster_size = NULL) {
   groups <- comparison_group_names(group1, group2)
+  design <- resolve_design_effect(design_effect, icc, cluster_size)
   effect_type <- match.arg(effect_type)
   check_number(p1, "Group 1 proportion", 0, 1, TRUE, TRUE)
   if (effect_type != "proportions") {
@@ -236,11 +252,15 @@ two_proportions <- function(p1, p2 = NULL, power = 0.80, alpha = 0.05,
     if (settings$objective == "equality") ((settings$z_alpha * a + settings$z_beta * b) / delta)^2
     else objective_size(b^2, difference, settings)
   } else NULL
+  n10_srs <- n10
+  if (settings$mode == "sample_size") n10 <- n10 * design$value
   counts <- comparison_counts(n10, settings, n1, n2)
   # Recompute the pooled proportion at the actual rounded group sizes.
   pooled_actual <- (counts$n1 * p1 + counts$n2 * p2) / counts$n_complete
   se_null <- sqrt(pooled_actual * (1 - pooled_actual) * (1 / counts$n1 + 1 / counts$n2))
   se_alt <- sqrt(p1 * (1 - p1) / counts$n1 + p2 * (1 - p2) / counts$n2)
+  se_null <- se_null * sqrt(design$value)
+  se_alt <- se_alt * sqrt(design$value)
   if (settings$objective != "equality") se_null <- se_alt
   achieved <- if (settings$objective == "equality") comparison_power(delta, se_null, se_alt, settings$z_alpha)
     else objective_power(difference, se_alt, settings)
@@ -253,20 +273,36 @@ two_proportions <- function(p1, p2 = NULL, power = 0.80, alpha = 0.05,
     p1 = p1, p2 = p2, delta = delta, difference = difference, pbar = pbar, a = a, b = b,
     effect_type = effect_type, effect = if (effect_type == "proportions") NULL else effect,
     pooled_actual = pooled_actual, se_null = se_null, se_alt = se_alt,
-    achieved_power = achieved, warnings = warnings), groups, settings, counts),
+    achieved_power = achieved, warnings = warnings,
+    design_effect = design$value, design_source = design$source,
+    icc = design$icc, cluster_size = design$cluster_size, n10_srs = n10_srs),
+    groups, settings, counts),
     class = c("two_proportions_result", "two_group_result"))
 }
 
 #' Two independent means, allowing different anticipated standard deviations
-two_means <- function(mean1, mean2, sd1 = NULL, sd2 = sd1, power = 0.80,
+two_means <- function(mean1 = NULL, mean2 = NULL, sd1 = NULL, sd2 = sd1, power = 0.80,
                       alpha = 0.05, ratio = 1, nonresponse = 0,
                       n1 = NULL, n2 = NULL, objective = "equality", direction = "higher",
                       margin = 0, lower = NULL, upper = NULL,
                       sd_method = c("separate", "pooled", "reference"), pooled_sd = NULL,
-                      ref_n1 = NULL, ref_n2 = NULL, group1 = "Group 1", group2 = "Group 2") {
+                      ref_n1 = NULL, ref_n2 = NULL, group1 = "Group 1", group2 = "Group 2",
+                      mean_difference = NULL, design_effect = NULL, icc = NULL,
+                      cluster_size = NULL) {
   groups <- comparison_group_names(group1, group2)
-  check_number(mean1, "Group 1 mean", -Inf, Inf)
-  check_number(mean2, "Group 2 mean", -Inf, Inf)
+  design <- resolve_design_effect(design_effect, icc, cluster_size)
+  mean_input <- if (is.null(mean_difference)) "means" else "difference"
+  if (mean_input == "difference") {
+    check_number(mean_difference, "Signed mean difference (group 2 minus group 1)", -Inf, Inf)
+    if (!is.null(mean1) || !is.null(mean2))
+      stop("Enter either group means or their signed difference, not both.", call. = FALSE)
+    # Centering at zero is internal to the planning computation, not an imputation
+    # of either group's anticipated mean. Reports explicitly show the difference.
+    mean1 <- 0; mean2 <- mean_difference
+  } else {
+    check_number(mean1, "Group 1 mean", -Inf, Inf)
+    check_number(mean2, "Group 2 mean", -Inf, Inf)
+  }
   sd_method <- match.arg(sd_method)
   sd1_input <- sd1
   sd2_input <- sd2
@@ -289,8 +325,10 @@ two_means <- function(mean1, mean2, sd1 = NULL, sd2 = sd1, power = 0.80,
     if (settings$objective == "equality") ((settings$z_alpha + settings$z_beta) * sqrt(v) / delta)^2
     else objective_size(v, difference, settings)
   } else NULL
+  n10_srs <- n10
+  if (settings$mode == "sample_size") n10 <- n10 * design$value
   counts <- comparison_counts(n10, settings, n1, n2)
-  se <- sqrt(sd1^2 / counts$n1 + sd2^2 / counts$n2)
+  se <- sqrt(design$value * (sd1^2 / counts$n1 + sd2^2 / counts$n2))
   achieved <- if (settings$objective == "equality") comparison_power(delta, se, se, settings$z_alpha)
     else objective_power(difference, se, settings)
   warnings <- if (min(counts$n1, counts$n2) < 30) {
@@ -300,6 +338,9 @@ two_means <- function(mean1, mean2, sd1 = NULL, sd2 = sd1, power = 0.80,
     mean1 = mean1, mean2 = mean2, sd1 = sd1, sd2 = sd2, delta = delta, difference = difference, variance_term = v,
     sd_method = sd_method, sd1_input = sd1_input, sd2_input = sd2_input,
     pooled_sd = pooled_sd, ref_n1 = ref_n1, ref_n2 = ref_n2,
+    mean_input = mean_input,
+    design_effect = design$value, design_source = design$source,
+    icc = design$icc, cluster_size = design$cluster_size, n10_srs = n10_srs,
     se_null = se, se_alt = se, achieved_power = achieved, warnings = warnings), groups, settings, counts),
     class = c("two_means_result", "two_group_result"))
 }

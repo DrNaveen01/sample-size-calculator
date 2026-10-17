@@ -55,13 +55,15 @@ objective_markdown <- function(x) {
   variance <- if (proportions) x$b^2 else x$variance_term
   difference_formula <- if (proportions) "D=p_2-p_1" else "D=\\mu_2-\\mu_1"
   difference_numeric <- if (proportions) paste0("D=", d(x$p2), "-", d(x$p1), "\\approx", d(x$difference)) else
+    if (identical(x$mean_input, "difference")) paste0("D=", d(x$difference), "\\quad\\text{(entered directly)}") else
     paste0("D=(", d(x$mean2), ")-(", d(x$mean1), ")\\approx", d(x$difference))
   variance_formula <- if (proportions) "V=p_1(1-p_1)+p_2(1-p_2)/k" else "V=\\sigma_1^2+\\sigma_2^2/k"
   variance_numeric <- if (proportions) paste0("V=", d(x$p1), "(1-", d(x$p1), ")+", d(x$p2), "(1-", d(x$p2), ")/", d(x$ratio), "\\approx", d(variance)) else
     paste0("V=(", d(x$sd1), ")^2+(", d(x$sd2), ")^2/", d(x$ratio), "\\approx", d(variance))
   rows <- c(legend_header(), if (proportions) c(
     legend_row("p_1", "Expected group 1 proportion", d(x$p1)), legend_row("p_2", "Expected group 2 proportion", d(x$p2))) else c(
-    legend_row("\\mu_1", "Expected group 1 mean", d(x$mean1)), legend_row("\\mu_2", "Expected group 2 mean", d(x$mean2)),
+    if (identical(x$mean_input, "difference")) legend_row("D", "Entered signed mean difference", d(x$difference)) else
+      c(legend_row("\\mu_1", "Expected group 1 mean", d(x$mean1)), legend_row("\\mu_2", "Expected group 2 mean", d(x$mean2))),
     legend_row("\\sigma_1", "Group 1 planning SD", d(x$sd1)), legend_row("\\sigma_2", "Group 2 planning SD", d(x$sd2))), sd$rows,
     legend_row("D", "Signed expected difference: group 2 minus group 1", d(x$difference)),
     legend_row("k=n_2/n_1", if (sizing) "Planned group 2 / group 1 allocation ratio" else "Ratio of supplied complete sizes", d(x$ratio)),
@@ -175,7 +177,7 @@ objective_markdown <- function(x) {
     ", for a total of ", display_count(x$n_final), ". Approximate power at the rounded complete sizes is ", display_power(x$achieved_power), ".") else
     paste0("The specified ", tolower(objective_name(x$objective)), " hypothesis has approximate power ", display_power(x$achieved_power),
       " with ", display_count(x$n1), " complete observations in group 1 and ", display_count(x$n2), " in group 2.")
-  assumptions <- c("- Groups and observations are independent. Paired data, clusters, and finite population corrections require other methods.",
+  assumptions <- c("- Groups are independent. A design-effect multiplier may approximate equal-size clusters; paired designs and finite-population corrections for trials are not supported.",
     if (proportions) "- The directional and equivalence calculations use an unpooled Wald Z approximation at the expected probabilities. No continuity correction, constrained score test, or exact binomial calculation is applied." else
       "- Anticipated SDs are treated as known for normal-approximation planning. This is not an exact t-test or Welch calculation.",
     "- Clinical margins and expected differences must be specified before examining study results. Non-significance in a difference test does not establish non-inferiority or equivalence.",

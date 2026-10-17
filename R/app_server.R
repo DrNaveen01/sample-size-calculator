@@ -33,17 +33,31 @@ calculator_server <- function(input, output, session) {
           ratio = if (sizing) input$allocation_ratio else 1, nonresponse = nonresponse,
           n1 = if (sizing) NULL else input$fixed_n1, n2 = if (sizing) NULL else input$fixed_n2)
       }
+      # Disabled adjustments are not passed to the calculation engines, even if
+      # the hidden inputs retain their previous values after switching to No.
+      design_args <- if (type %in% c("single_proportion","single_mean","two_proportions","two_means") &&
+                         identical(input$apply_design_effect, "yes"))
+        switch(input$design_mode,
+          direct = list(design_effect = input$design_effect),
+          icc = list(icc = input$cluster_icc, cluster_size = input$cluster_m),
+          stop("Choose direct DEFF or cluster size and ICC.", call. = FALSE)) else list()
+      finite_args <- if (type %in% c("single_proportion", "single_mean") &&
+                         identical(input$apply_fpc, "yes"))
+        list(population_size = input$fpc_population) else list()
       x <- switch(type,
         single_proportion = {
           check_number(input$p_pct, "Expected proportion (%)", 0, 100, TRUE, TRUE)
           relative <- input$precision_type == "relative"
           check_number(if (relative) input$relative_pct else input$absolute_pct,
             if (relative) "Relative margin of error (%)" else "Margin of error (percentage points)", 0, 100, TRUE)
-          single_proportion(input$p_pct / 100,
-            if (relative) input$relative_pct / 100 else input$absolute_pct / 100,
-            confidence, nonresponse, input$precision_type, z)
+          do.call(single_proportion, c(list(p = input$p_pct / 100,
+            precision = if (relative) input$relative_pct / 100 else input$absolute_pct / 100,
+            confidence = confidence, nonresponse = nonresponse,
+            precision_type = input$precision_type, z = z), design_args, finite_args))
         },
-        single_mean = single_mean(input$mean_sd, input$mean_precision, confidence, nonresponse, z),
+        single_mean = do.call(single_mean, c(list(sd = input$mean_sd,
+          precision = input$mean_precision, confidence = confidence,
+          nonresponse = nonresponse, z = z), design_args, finite_args)),
         yamane = {
           check_number(input$yamane_precision_pct, "Precision (percentage points)", 0, 100, TRUE, TRUE)
           yamane(input$population_size, input$yamane_precision_pct / 100, nonresponse)
@@ -54,12 +68,15 @@ calculator_server <- function(input, output, session) {
           do.call(two_proportions, c(list(p1 = input$p1_pct / 100,
             p2 = if (input$effect_type == "proportions") input$p2_pct / 100 else NULL,
             effect_type = input$effect_type,
-            effect = if (input$effect_type == "or") input$odds_ratio else if (input$effect_type == "rr") input$risk_ratio else NULL), comparison_args))
+            effect = if (input$effect_type == "or") input$odds_ratio else if (input$effect_type == "rr") input$risk_ratio else NULL), comparison_args, design_args))
         },
-        two_means = do.call(two_means, c(list(mean1 = input$mean1, mean2 = input$mean2,
+        two_means = do.call(two_means, c(list(
+          mean1 = if (identical(input$mean_input, "difference")) NULL else input$mean1,
+          mean2 = if (identical(input$mean_input, "difference")) NULL else input$mean2,
+          mean_difference = if (identical(input$mean_input, "difference")) input$mean_difference else NULL,
           sd1 = input$sd1, sd2 = input$sd2,
           sd_method = if (is.null(input$sd_method)) "separate" else input$sd_method,
-          pooled_sd = input$pooled_sd, ref_n1 = input$ref_n1, ref_n2 = input$ref_n2), comparison_args)),
+          pooled_sd = input$pooled_sd, ref_n1 = input$ref_n1, ref_n2 = input$ref_n2), comparison_args, design_args)),
         stop("Choose a supported calculator.", call. = FALSE))
       list(result = x, error = NULL)
     }, error = function(e) list(result = NULL, error = conditionMessage(e)))
@@ -136,6 +153,10 @@ calculator_server <- function(input, output, session) {
       shiny::tags$div(class = "result-details", details),
       if (comparison && !power_mode) shiny::tags$p(class = "power-check", paste0("Approximate power at rounded complete sizes: ", display_power(x$achieved_power),
         " · Planned ", x$group2, " / ", x$group1, " ratio: ", display_number(x$ratio, 6L))),
+      if (!is.null(x$design_effect) && !identical(x$design_source, "none"))
+        shiny::tags$p(class = "power-check", paste("Applied design effect:", display_number(x$design_effect))),
+      if (!is.null(x$population_size))
+        shiny::tags$p(class = "power-check", paste("Finite sampling frame:", display_count(x$population_size))),
       if (inherits(x, "two_means_result") && x$sd_method != "separate") shiny::tags$p(class = "power-check",
         paste0(if (x$sd_method == "reference") "Computed" else "Reported", " pooled SD: ", display_number(x$pooled_sd))),
       if (length(x$warnings)) shiny::tags$div(class = "calculation-warning", role = "status", paste(x$warnings, collapse = " ")))
@@ -221,14 +242,17 @@ calculator_server <- function(input, output, session) {
       sd1 = 15, sd2 = 15, alpha_pct = 5, power_pct = 80, allocation_ratio = 1,
       fixed_n1 = 100, fixed_n2 = 100, ni_pp = 5, ni_mean = 5, superiority_pp = 0, superiority_mean = 0,
       lower_pp = -5, upper_pp = 5, lower_mean = -5, upper_mean = 5, pooled_sd = 15,
-      ref_n1 = 50, ref_n2 = 100, population_size = 1000, yamane_precision_pct = 5)
+      ref_n1 = 50, ref_n2 = 100, population_size = 1000, yamane_precision_pct = 5,
+      mean_difference = 5, design_effect = 1.5, cluster_icc = .02, cluster_m = 20,
+      fpc_population = 1000)
     advanced_defaults <- list(advanced_confidence=95,advanced_alpha=5,advanced_power=80,
       auc_value=.8,auc_precision=.05,auc_null=.5,auc_second=.75,auc_cohort_ratio=1,auc_rho=.5,auc_prevalence=20,auc_ratio=1,auc_cases=100,auc_controls=100,
       diag_sens=85,diag_spec=90,diag_dsens=5,diag_dspec=5,diag_benchmark=70,diag_prevalence=20,diag_n=100,
       corr_r=.3,corr_null=0,corr_second=.1,corr_precision=.1,corr_ratio=1,corr_n1=100,corr_n2=100,effects_a=20,effects_b=80,effects_c=40,effects_d=60)
     defaults <- c(defaults,advanced_defaults)
-    advanced_selections <- list(advanced_mode="sample_size",advanced_alternative="two.sided",auc_objective="estimate",auc_recruitment="separate",diag_objective="sensitivity",diag_interval="wilson",diag_recruitment="population",corr_objective="test",corr_scale="correlation",effects_design="cohort",effects_correction="none")
+    advanced_selections <- list(advanced_mode="sample_size",advanced_alternative="two.sided",auc_objective="test",auc_recruitment="population",diag_objective="sensitivity",diag_interval="wilson",diag_recruitment="population",corr_objective="test",corr_scale="correlation",effects_design="cohort",effects_correction="none")
     for(name in names(advanced_selections)) shiny::updateSelectInput(session,name,selected=advanced_selections[[name]])
+    shiny::updateSelectInput(session,"auc_method",selected="riskcalc")
     for(pair in list(c("auc_name1","Test 1"),c("auc_name2","Test 2"),c("corr_name1","Population 1"),c("corr_name2","Population 2"),c("effects_name1","Exposed or treatment"),c("effects_name2","Unexposed or control"))) shiny::updateTextInput(session,pair[1],value=pair[2])
     for (name in names(defaults)) shiny::updateNumericInput(session, name, value = defaults[[name]])
     shiny::updateRadioButtons(session, "precision_type", selected = "absolute")
@@ -238,6 +262,10 @@ calculator_server <- function(input, output, session) {
     shiny::updateSelectInput(session, "objective", selected = "equality")
     shiny::updateSelectInput(session, "direction", selected = "higher")
     shiny::updateSelectInput(session, "sd_method", selected = "separate")
+    shiny::updateRadioButtons(session, "apply_design_effect", selected = "no")
+    shiny::updateSelectInput(session, "design_mode", selected = "direct")
+    shiny::updateRadioButtons(session, "apply_fpc", selected = "no")
+    shiny::updateRadioButtons(session, "mean_input", selected = "means")
     shiny::updateTextInput(session, "group1_name", value = "Group 1")
     shiny::updateTextInput(session, "group2_name", value = "Group 2")
   })

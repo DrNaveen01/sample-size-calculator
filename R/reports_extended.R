@@ -11,10 +11,66 @@ calculation_key <- function(x) {
   stop("Unsupported calculation result.", call. = FALSE)
 }
 
+design_adjustment_markdown <- function(x) {
+  using_design <- !is.null(x$design_source) && !identical(x$design_source, "none")
+  using_fpc <- !is.null(x$population_size)
+  if (!using_design && !using_fpc) return("")
+  f <- formula_lines
+  d <- display_number
+  lines <- c("## Optional sampling adjustments", "")
+  if (using_design) {
+    lines <- c(lines, "### Design effect", "")
+    if (identical(x$design_source, "icc")) {
+      lines <- c(lines,
+        f("DEFF=1+(M-1)\\rho"),
+        f(paste0("DEFF=1+(", d(x$cluster_size), "-1)\\times", d(x$icc),
+                 "=", d(x$design_effect))),
+        "Here $M$ denotes mean cluster size and $\\rho$ denotes the intracluster correlation coefficient. The formula assumes approximately equal cluster sizes.")
+    } else {
+      lines <- c(lines, "The design effect was entered directly.",
+        f(paste0("DEFF=", d(x$design_effect))))
+    }
+    if (inherits(x, "two_group_result")) {
+      lines <- c(lines,
+        if (x$mode == "sample_size") c(
+          f("n_{1,\\mathrm{DEFF}}=DEFF\\times n_{1,\\mathrm{independent}}"),
+          f(paste0("n_{1,\\mathrm{DEFF}}=", d(x$design_effect),
+                   "\\times", d(x$n10_srs), "\\approx", d(x$n10)))) else c(
+          f("SE_{\\mathrm{DEFF}}=\\sqrt{DEFF}\\times SE_{\\mathrm{independent}}"),
+          "For fixed group sizes, the design effect increases the standard errors used in the approximate power calculation."))
+      lines <- c(lines, "This variance-inflation approximation does not replace cluster-count or cluster-size-variation planning.")
+    } else {
+      lines <- c(lines,
+        f("n_{\\mathrm{design}}=DEFF\\times n_{\\mathrm{SRS}}"),
+        f(paste0("n_{\\mathrm{design}}=", d(x$design_effect), "\\times",
+                 d(x$n_srs), "\\approx", d(x$n_design))))
+    }
+  }
+  if (using_fpc) {
+    reference_n <- if (using_design) "n_{\\mathrm{design}}" else "n_{\\mathrm{SRS}}"
+    lines <- c(lines, "### Finite population correction", "",
+      paste0("Finite sampling frame: $N=", d(x$population_size), "$."),
+      f(paste0("n_{\\mathrm{FPC}}=\\frac{N\\times", reference_n,
+               "}{N-1+", reference_n, "}")),
+      f(paste0("n_{\\mathrm{FPC}}=\\frac{", d(x$population_size),
+               "\\times", d(if (using_design) x$n_design else x$n_srs),
+               "}{", d(x$population_size), "-1+",
+               d(if (using_design) x$n_design else x$n_srs),
+               "}\\approx", d(x$n0))),
+      "This correction assumes sampling without replacement from a known finite eligible population; it is not automatically appropriate for randomized trials.")
+  }
+  if (!inherits(x, "two_group_result")) lines <- c(lines, "",
+    f(paste0("n_{\\mathrm{complete}}=", d(x$n_complete))),
+    f(paste0("n_{\\mathrm{final}}=", d(x$n_final))))
+  paste(lines, collapse="\n")
+}
+
 calculation_markdown <- function(x) {
   text <- if (inherits(x, "extended_result")) extended_markdown(x) else switch(calculation_key(x), single_proportion = single_proportion_markdown(x),
     single_mean = single_mean_markdown(x), two_proportions = comparison_markdown(x),
     two_means = comparison_markdown(x), yamane = yamane_markdown(x))
+  adjustment <- design_adjustment_markdown(x)
+  if (nzchar(adjustment)) text <- sub("## Interpretation", paste0(adjustment, "\n\n## Interpretation"), text, fixed = TRUE)
   if (exists("plot_appendix", mode = "function")) text <- paste(c(text, plot_appendix(x)), collapse = "\n")
   text
 }
@@ -48,7 +104,7 @@ single_mean_markdown <- function(x) {
     paste0("**Final recruitment target: ", display_count(x$n_final), " participants.**"), "",
     "This report plans estimation of one population mean with a specified absolute margin of error, using an anticipated standard deviation and a normal approximation.", "",
     "## Generic formulas", "",
-    f("n_0=\\frac{Z_{1-\\alpha/2}^2\\sigma^2}{d^2}"),
+    f("n_{\\mathrm{SRS}}=\\frac{Z_{1-\\alpha/2}^2\\sigma^2}{d^2}"),
     f("n_{\\mathrm{adj}}=\\frac{n_0}{1-r}"),
     "The complete sample $n_{\\mathrm{complete}}$ and final recruitment target $n_{\\mathrm{final}}$ are rounded upward from the respective unrounded values. The standard deviation and margin of error use the same measurement units.", "",
     "## Legends and input values", "", legend_header(),
@@ -58,13 +114,13 @@ single_mean_markdown <- function(x) {
     legend_row("\\alpha", "Complement of confidence", d(x$alpha)),
     legend_row("Z_{1-\\alpha/2}", "Standard-normal critical value", d(x$z)),
     legend_row("r", "Expected non-response fraction", d(x$nonresponse)),
-    legend_row("n_0", "Unrounded complete sample size", d(x$n0)),
+    legend_row("n_0", "Unrounded complete sample size after optional adjustments", d(x$n0)),
     legend_row("n_{\\mathrm{adj}}", "Unrounded recruitment size", d(x$n_adjusted)),
     legend_row("n_{\\mathrm{complete}}", "Whole-number complete sample", d(x$n_complete)),
     legend_row("n_{\\mathrm{final}}", "Whole-number recruitment target", d(x$n_final)), "",
     "## Numerical substitution", "", "### Confidence and critical value", "", confidence_substitution(x),
     "### Complete sample size", "",
-    f(paste0("n_0\\approx\\frac{(", d(x$z), ")^2\\times(", d(x$sd), ")^2}{(", d(x$d), ")^2}\\approx", d(x$n0))),
+    f(paste0("n_{\\mathrm{SRS}}\\approx\\frac{(", d(x$z), ")^2\\times(", d(x$sd), ")^2}{(", d(x$d), ")^2}\\approx", d(x$n_srs))),
     f(paste0("n_{\\mathrm{complete}}=", d(x$n_complete))),
     "### Non-response and recruitment", "",
     f(paste0("n_{\\mathrm{adj}}\\approx\\frac{", d(x$n0), "}{1-", d(x$nonresponse), "}\\approx", d(x$n_adjusted))),
@@ -76,10 +132,10 @@ single_mean_markdown <- function(x) {
       " complete observations. Allowing for ", display_percent(x$nonresponse), " non-response gives a recruitment target of ", display_count(x$n_final), " participants."), "",
     "## Assumptions and limitations", "",
     "- This is precision planning for estimation; power is not a required input.",
-    "- Observations are independent and the population is large relative to the sample.",
+    "- The variance calculation assumes the declared independence or design-effect approximation. A known finite sampling frame may be used for sampling without replacement.",
     "- The anticipated standard deviation is treated as known for planning. If it is estimated, a t-based design may require a larger sample.",
     "- Strong skewness and small samples may invalidate the normal approximation.",
-    "- No finite population correction, cluster effect, or bias correction is applied.",
+    "- Finite-population correction and design effect are optional; neither removes selection or measurement bias.",
     "- Non-response inflation addresses expected loss of observations, not non-response bias.")
   if (length(x$warnings)) lines <- c(lines, "", "### Checks for these inputs", "", paste0("- ", x$warnings))
   lines <- c(lines, "", "## References", "",
@@ -100,8 +156,10 @@ equality_markdown <- function(x) {
     c(legend_row("p_1", "Expected group 1 proportion", paste0(d(x$p1), " (", display_percent(x$p1), ")")),
       legend_row("p_2", "Expected group 2 proportion", paste0(d(x$p2), " (", display_percent(x$p2), ")")))
   } else {
-    c(legend_row("\\mu_1", "Expected group 1 mean", d(x$mean1)),
-      legend_row("\\mu_2", "Expected group 2 mean", d(x$mean2)),
+    c(if (identical(x$mean_input, "difference"))
+        legend_row("D", "Entered signed difference: group 2 minus group 1", d(x$difference)) else
+        c(legend_row("\\mu_1", "Expected group 1 mean", d(x$mean1)),
+          legend_row("\\mu_2", "Expected group 2 mean", d(x$mean2))),
       legend_row("\\sigma_1", "Group 1 standard deviation", d(x$sd1)),
       legend_row("\\sigma_2", "Group 2 standard deviation", d(x$sd2)))
   }
@@ -169,7 +227,9 @@ equality_markdown <- function(x) {
     f("\\beta=1-P,\\qquad Z_{1-\\beta}=\\Phi^{-1}(P)"),
     f(paste0("\\beta=1-", d(x$power), "=", d(x$beta), ",\\qquad Z_{1-\\beta}=\\Phi^{-1}(", d(x$power), ")\\approx", d(x$z_beta))))
   delta_step <- f(if (proportions) paste0("\\delta=\\operatorname{abs}(", d(x$p2), "-", d(x$p1), ")\\approx", d(x$delta)) else
-    paste0("\\delta=\\operatorname{abs}((", d(x$mean2), ")-(", d(x$mean1), "))\\approx", d(x$delta)))
+    if (identical(x$mean_input, "difference"))
+      paste0("\\delta=\\operatorname{abs}(", d(x$difference), ")\\approx", d(x$delta)) else
+      paste0("\\delta=\\operatorname{abs}((", d(x$mean2), ")-(", d(x$mean1), "))\\approx", d(x$delta)))
   size_steps <- character()
   if (sizing) {
     size_steps <- c("### Difference and complete sample sizes", "", delta_step)
@@ -229,7 +289,7 @@ equality_markdown <- function(x) {
     "## Legends and input values", "", rows, "",
     "## Numerical substitution", "", sd_sections$numeric, effect_numeric, critical_steps, size_steps, power_steps, "",
     "## Interpretation", "", interpretation, "", "## Assumptions and limitations", "",
-    "- Groups and observations are independent. This method does not cover paired data or cluster designs.",
+    "- Groups are independent. An optional design-effect variance inflation approximates intracluster correlation; detailed cluster-trial designs require additional checks.",
     "- This equality option tests a zero difference. A non-significant result does not demonstrate that the groups are identical or clinically equivalent.",
     if (proportions) "- Binary outcomes have the specified group probabilities. The null variance is pooled and the alternative variance is unpooled; no continuity correction or exact binomial calculation is applied." else
       "- Anticipated group standard deviations are treated as known for planning. Different standard deviations are allowed; this is a Z approximation, not an exact t-test or Welch power calculation.",
